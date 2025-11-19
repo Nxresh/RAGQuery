@@ -58,9 +58,11 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, isLoadi
     return null; 
   }
 
-  // Defensive checks for results structure
-  const synthesizedAnswer = results?.synthesizedAnswer || 'No answer generated';
-  const rankedChunks = results?.rankedChunks || [];    if (!Array.isArray(rankedChunks)) {
+    // Defensive checks for results structure
+    const synthesizedAnswer = results?.synthesizedAnswer || results?.answer || 'No answer generated';
+    const rankedChunks = results?.rankedChunks || results?.chunks || [];
+
+    if (!Array.isArray(rankedChunks)) {
       console.error('rankedChunks is not an array:', rankedChunks);
       return (
         <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl">
