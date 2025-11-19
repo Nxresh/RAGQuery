@@ -4,14 +4,15 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [
     react(),
-    // small plugin to set headers in dev server
     {
       name: 'dev-headers',
       configureServer(server) {
-        server.middlewares.use((_req: any, res: any, next: any) => {
+        server.middlewares.use((_req, res, next) => {
           res.setHeader('X-Content-Type-Options', 'nosniff');
-          // Dev CSP: Allow localhost:3000 for API calls, allow unsafe-inline/unsafe-eval for dev
-          res.setHeader('Content-Security-Policy', "default-src 'self' http://localhost:3000; connect-src 'self' http://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;");
+          res.setHeader(
+            'Content-Security-Policy',
+            "default-src 'self' http://localhost:3000; connect-src 'self' http://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;"
+          );
           next();
         });
       },
@@ -27,4 +28,9 @@ export default defineConfig({
       },
     },
   },
+
+  // 🔥 IMPORTANT FOR VERCEL
+  build: {
+    outDir: "dist",
+  }
 });
