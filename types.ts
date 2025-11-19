@@ -4,6 +4,8 @@ export interface RankedChunk {
 }
 
 export interface RAGResult {
-  synthesizedAnswer: string;
-  rankedChunks: RankedChunk[];
+  synthesizedAnswer?: string;   // Newer API key
+  answer?: string;              // Older fallback key
+  rankedChunks?: RankedChunk[]; // Newer API key
+  chunks?: RankedChunk[];       // Older fallback key
 }
