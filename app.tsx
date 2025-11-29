@@ -1,141 +1,143 @@
-import React, { useState, useCallback } from 'react';
-import { Header } from './components/header';
-import { DataSourceInput } from './components/DataSourceInput';
-import { QueryInput } from './components/QueryInput';
-import { ResultsDisplay } from './components/ResultsDisplay';
-import { RAGResult } from './types';
-import { performRAG, scrapeContentFromURL } from './services/geminiService';
+import { useState, useEffect } from 'react';
+import { onAuthStateChanged, User, sendEmailVerification } from 'firebase/auth';
+import { auth } from './firebase';
+import { NotebookLMLayout } from './components/NotebookLMLayout';
+import { AuthPage } from './components/Auth/AuthPage';
 
-console.log('App component file loaded');
 
-export default function App(): React.JSX.Element {
-  console.log('App() function called');
-  const [documentContent, setDocumentContent] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [query, setQuery] = useState<string>('');
-  const [results, setResults] = useState<RAGResult | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isScraping, setIsScraping] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (file: File | null) => {
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        setDocumentContent(text);
-        setFileName(file.name);
-        setResults(null);
-        setError(null);
-      };
-      reader.onerror = () => {
-        setError('Failed to read the file.');
-        setDocumentContent(null);
-        setFileName(null);
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState<'login' | 'signup'>('login');
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [resendError, setResendError] = useState('');
+
+
+  useEffect(() => {
+    // Handle initial hash
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1);
+      if (hash === '/signup') {
+        setView('signup');
+      } else {
+        setView('login');
       }
-      reader.readAsText(file);
-    } else {
-      setDocumentContent(null);
-      setFileName(null);
-    }
-  };
+    };
 
-  const handleUrlSubmit = useCallback(async (url: string) => {
-    if (!url.trim()) {
-      setError('Please enter a valid URL.');
-      return;
-    }
+    // Set initial view
+    handleHashChange();
 
-    setIsScraping(true);
-    setError(null);
-    setResults(null);
-    setDocumentContent(null);
-    setFileName(null);
+    // Listen for hash changes
+    window.addEventListener('hashchange', handleHashChange);
 
-    try {
-      const scrapedContent = await scrapeContentFromURL(url);
-      setDocumentContent(scrapedContent);
-      setFileName(url);
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred during scraping.');
-      setDocumentContent(null);
-      setFileName(null);
-    } finally {
-      setIsScraping(false);
-    }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('hashchange', handleHashChange);
+    };
   }, []);
 
-  const handleClearDataSource = () => {
-    setDocumentContent(null);
-    setFileName(null);
-    setResults(null);
-    setError(null);
-    setQuery(''); // Also clear the query input for a fresh start.
+  const handleResendVerification = async () => {
+    if (!user) return;
+    try {
+      await sendEmailVerification(user);
+      setVerificationSent(true);
+      setResendError('');
+      setTimeout(() => setVerificationSent(false), 5000); // Reset success message after 5s
+    } catch (err: any) {
+      console.error("Error sending verification email:", err);
+      setResendError(err.message || "Failed to resend verification email.");
+    }
   };
 
-  const handleSubmit = useCallback(async () => {
-    if (!query.trim() || !documentContent) {
-      setError('Please provide a document or URL and enter a query.');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setResults(null);
-
+  const handleCheckVerification = async () => {
+    if (!user) return;
     try {
-      const ragResult = await performRAG(documentContent, query);
-      setResults(ragResult);
+      await user.reload();
+      // Force state update by creating a new object reference
+      if (user.emailVerified) {
+        setUser({ ...user } as User);
+      } else {
+        alert("Email is not verified yet. Please click the link in your email.");
+      }
     } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
-      setIsLoading(false);
+      console.error("Error reloading user:", err);
     }
-  }, [documentContent, query]);
+  };
 
-  console.log('App render function executing...');
-  
-  return (
-    <div className="min-h-screen bg-black font-sans text-neutral-200">
-      <Header />
-      <main className="container mx-auto p-4 md:p-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-          {/* Controls Column */}
-          <div className="lg:col-span-4 xl:col-span-3 space-y-8">
-            <section>
-              <h2 className="text-lg font-medium text-neutral-400 mb-3">Data Source</h2>
-              <DataSourceInput
-                onFileChange={handleFileChange}
-                onUrlSubmit={handleUrlSubmit}
-                onClear={handleClearDataSource}
-                fileName={fileName}
-                isScraping={isScraping}
-              />
-            </section>
-            <section>
-               <h2 className="text-lg font-medium text-neutral-400 mb-3">Your Question</h2>
-              <QueryInput
-                query={query}
-                setQuery={setQuery}
-                onSubmit={handleSubmit}
-                isDisabled={!documentContent || isLoading || isScraping}
-              />
-            </section>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-neutral-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage initialView={view} />;
+  }
+
+  // Check if email is verified
+  if (!user.emailVerified) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="bg-neutral-900/50 border-2 border-orange-500/30 rounded-2xl p-8 backdrop-blur-sm text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-yellow-500/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
+          <h2 className="text-2xl font-bold text-white mb-4">Email Not Verified</h2>
+          <p className="text-neutral-300 mb-6">
+            Please check your email <span className="text-orange-400 font-medium">({user.email})</span> and click the verification link.
+          </p>
 
-          {/* Results Column */}
-          <div className="lg:col-span-8 xl:col-span-9">
-             <ResultsDisplay 
-                results={results}
-                isLoading={isLoading}
-                error={error}
-                hasSubmitted={!!(isLoading || error || results)}
-              />
+          {verificationSent && (
+            <div className="mb-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 text-sm">
+              Verification email sent! Check your inbox (and spam).
+            </div>
+          )}
+
+          {resendError && (
+            <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
+              {resendError}
+            </div>
+          )}
+
+          <div className="flex flex-col space-y-3">
+            <button
+              onClick={handleCheckVerification}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300"
+            >
+              I've Verified My Email
+            </button>
+            <button
+              onClick={handleResendVerification}
+              className="bg-neutral-800 hover:bg-neutral-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300 border border-neutral-700"
+            >
+              Resend Verification Email
+            </button>
+            <button
+              onClick={() => auth.signOut()}
+              className="bg-transparent hover:bg-neutral-800 text-neutral-400 hover:text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
-      </main>
-    </div>
-  );
+      </div>
+    );
+  }
+
+  return <NotebookLMLayout user={user} onSignOut={() => auth.signOut()} />;
 }
+
+export default App;

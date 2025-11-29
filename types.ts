@@ -9,3 +9,8 @@ export interface RAGResult {
   rankedChunks?: RankedChunk[]; // Newer API key
   chunks?: RankedChunk[];       // Older fallback key
 }
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}

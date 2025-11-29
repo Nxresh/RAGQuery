@@ -44,6 +44,14 @@ db.run(`CREATE TABLE IF NOT EXISTS documents (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
+// Projects table
+db.run(`CREATE TABLE IF NOT EXISTS projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    source_ids TEXT NOT NULL, -- JSON array of source IDs
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
 app.use(cors({
   origin: 'http://localhost:5173',
   credentials: true
@@ -361,6 +369,47 @@ app.delete('/api/documents/:id', (req, res) => {
   db.run('DELETE FROM documents WHERE id = ?', [id], (err) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: 'Document deleted' });
+  });
+});
+
+// Projects Endpoints
+app.get('/api/projects', (req, res) => {
+  db.all('SELECT * FROM projects ORDER BY created_at DESC', [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    // Parse source_ids for frontend convenience
+    const projects = rows.map(p => ({
+      ...p,
+      source_ids: JSON.parse(p.source_ids)
+    }));
+    res.json({ projects });
+  });
+});
+
+app.post('/api/projects', (req, res) => {
+  const { name, source_ids } = req.body;
+  if (!name || !source_ids || !Array.isArray(source_ids)) {
+    return res.status(400).json({ error: 'Missing name or invalid source_ids' });
+  }
+
+  if (source_ids.length > 5) {
+    return res.status(400).json({ error: 'Projects can have a maximum of 5 sources' });
+  }
+
+  db.run(
+    'INSERT INTO projects (name, source_ids) VALUES (?, ?)',
+    [name, JSON.stringify(source_ids)],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ id: this.lastID, name, source_ids });
+    }
+  );
+});
+
+app.delete('/api/projects/:id', (req, res) => {
+  const { id } = req.params;
+  db.run('DELETE FROM projects WHERE id = ?', [id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Project deleted' });
   });
 });
 

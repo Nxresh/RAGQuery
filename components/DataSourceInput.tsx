@@ -12,12 +12,12 @@ interface DataSourceInputProps {
   isScraping: boolean;
 }
 
-export const DataSourceInput: React.FC<DataSourceInputProps> = ({ 
-  onFileChange, 
-  onUrlSubmit, 
-  onClear, 
-  fileName, 
-  isScraping 
+export const DataSourceInput: React.FC<DataSourceInputProps> = ({
+  onFileChange,
+  onUrlSubmit,
+  onClear,
+  fileName,
+  isScraping
 }) => {
   const [url, setUrl] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'file' | 'url'>('file');
@@ -40,22 +40,20 @@ export const DataSourceInput: React.FC<DataSourceInputProps> = ({
       <div className="flex border-b border-neutral-800">
         <button
           onClick={() => setActiveTab('file')}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'file'
+          className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'file'
               ? 'text-orange-500 border-b-2 border-orange-500'
               : 'text-neutral-400 hover:text-neutral-200'
-          }`}
+            }`}
         >
           <FileIcon className="w-4 h-4 inline mr-2" />
           File
         </button>
         <button
           onClick={() => setActiveTab('url')}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'url'
+          className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'url'
               ? 'text-orange-500 border-b-2 border-orange-500'
               : 'text-neutral-400 hover:text-neutral-200'
-          }`}
+            }`}
         >
           <LinkIcon className="w-4 h-4 inline mr-2" />
           URL
@@ -137,4 +135,3 @@ export const DataSourceInput: React.FC<DataSourceInputProps> = ({
     </div>
   );
 };
-

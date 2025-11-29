@@ -1,4 +1,16 @@
-import { RAGResult } from '../types';
+import { RAGResult, ChatMessage } from '../types';
+
+export interface StoredDocument {
+	id: number;
+	title: string;
+	type: 'text' | 'url';
+	created_at: string;
+}
+
+export interface AresChatResponse {
+	response: string;
+	sources: { text: string; source: string; score: number }[];
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -60,3 +72,50 @@ export async function scrapeContentFromURL(url: string): Promise<string> {
 	}
 }
 
+
+export async function saveDocument(title: string, content: string, type: 'text' | 'url'): Promise<{ id: number }> {
+	return await postJson<{ id: number }>('/documents', { title, content, type });
+}
+
+export async function uploadFile(file: File): Promise<{ id: number; content: string; title: string }> {
+	const formData = new FormData();
+	formData.append('file', file);
+
+	console.log(`[Service] Uploading file: ${file.name}`);
+	const res = await fetch(`${API_BASE_URL}/upload`, {
+		method: 'POST',
+		body: formData, // fetch automatically sets Content-Type to multipart/form-data
+	});
+
+	if (!res.ok) {
+		const errorData = await res.json().catch(() => ({}));
+		throw new Error(errorData.error || `Upload failed: ${res.status}`);
+	}
+
+	return await res.json();
+}
+
+export async function getDocuments(): Promise<{ documents: StoredDocument[] }> {
+	try {
+		const res = await fetch(`${API_BASE_URL}/documents`);
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+		return await res.json();
+	} catch (error) {
+		console.error('Error fetching documents:', error);
+		throw error;
+	}
+}
+
+export async function deleteDocument(id: number): Promise<void> {
+	try {
+		const res = await fetch(`${API_BASE_URL}/documents/${id}`, { method: 'DELETE' });
+		if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	} catch (error) {
+		console.error('Error deleting document:', error);
+		throw error;
+	}
+}
+
+export async function chatWithAres(query: string, history: ChatMessage[]): Promise<AresChatResponse> {
+	return await postJson<AresChatResponse>('/chat/ares', { query, history });
+}

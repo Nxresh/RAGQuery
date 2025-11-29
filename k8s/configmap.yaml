@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ragquery-config
+  namespace: ragquery
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  # Update this with your actual domain when you have one
+  FRONTEND_URL: "http://localhost"
+  BACKEND_URL: "http://backend-service:3000"

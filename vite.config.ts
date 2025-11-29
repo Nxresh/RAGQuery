@@ -11,7 +11,7 @@ export default defineConfig({
           res.setHeader('X-Content-Type-Options', 'nosniff');
           res.setHeader(
             'Content-Security-Policy',
-            "default-src 'self' http://localhost:3000; connect-src 'self' http://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;"
+            "default-src 'self' http://localhost:3000; connect-src 'self' http://localhost:3000 https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data: https:;"
           );
           next();
         });

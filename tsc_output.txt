@@ -1,0 +1,2 @@
+components/NotebookLMLayout.tsx(403,69): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.

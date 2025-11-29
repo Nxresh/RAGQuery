@@ -1,0 +1,6 @@
+﻿api/proxy.ts(2,35): error TS2307: Cannot find module '@google/genai' or its corresponding type declarations.
+app.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+components/FormattedAnswer.tsx(19,26): error TS6133: 'idx' is declared but its value is never read.
+MainApp.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+MainApp.tsx(11,16): error TS6133: 'setView' is declared but its value is never read.
+MainApp.tsx(65,11): error TS2741: Property 'onSignOut' is missing in type '{}' but required in type 'NotebookLMLayoutProps'.

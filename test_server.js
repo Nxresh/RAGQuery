@@ -1,0 +1,22 @@
+console.log('1. Starting imports...');
+import dotenv from 'dotenv';
+dotenv.config();
+console.log('2. dotenv loaded');
+import express from 'express';
+console.log('3. express loaded');
+import cors from 'cors';
+console.log('4. cors loaded');
+import { GoogleGenAI, SchemaType } from '@google/genai';
+console.log('5. GoogleGenAI loaded');
+import sqlite3 from 'sqlite3';
+console.log('6. sqlite3 loaded');
+import multer from 'multer';
+console.log('7. multer loaded');
+import pdfParse from 'pdf-parse';
+console.log('8. pdf-parse loaded');
+import mammoth from 'mammoth';
+console.log('9. mammoth loaded');
+import fs from 'fs';
+console.log('10. fs loaded');
+
+console.log('All imports successful');

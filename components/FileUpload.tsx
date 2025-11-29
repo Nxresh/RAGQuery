@@ -30,10 +30,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileChange }) => {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.md,.pdf"
+        accept=".txt,.md,.pdf,.docx"
         onChange={handleFileSelect}
         className="hidden"
-        aria-label="Upload a file (TXT, MD, or PDF)"
+        aria-label="Upload a file (TXT, MD, PDF, or DOCX)"
       />
       <div
         onDrop={handleDrop}
@@ -48,7 +48,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileChange }) => {
         <p className="text-sm text-neutral-400 mb-2">
           <span className="text-orange-500 font-medium">Click to upload</span> or drag and drop
         </p>
-        <p className="text-xs text-neutral-500">TXT, MD, or PDF files</p>
+        <p className="text-xs text-neutral-500">TXT, MD, PDF, or DOCX files</p>
       </div>
     </>
   );
