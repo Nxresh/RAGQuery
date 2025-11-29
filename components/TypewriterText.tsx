@@ -6,9 +6,11 @@ interface TypewriterTextProps {
     onComplete?: () => void;
 }
 
+import ReactMarkdown from 'react-markdown';
+
 export const TypewriterText: React.FC<TypewriterTextProps> = ({
     text,
-    speed = 20,
+    speed = 10,
     onComplete
 }) => {
     const [displayedText, setDisplayedText] = useState('');
@@ -34,11 +36,11 @@ export const TypewriterText: React.FC<TypewriterTextProps> = ({
     }, [text]);
 
     return (
-        <span className="inline whitespace-pre-wrap">
-            {displayedText}
+        <div className="typewriter-container">
+            <ReactMarkdown>{displayedText}</ReactMarkdown>
             {currentIndex < text.length && (
-                <span className="inline-block w-1 h-4 bg-orange-500 ml-0.5 animate-pulse" />
+                <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse align-middle" />
             )}
-        </span>
+        </div>
     );
 };

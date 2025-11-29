@@ -3,7 +3,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import sqlite3 from 'sqlite3';
+import pg from 'pg'; // Use node-postgres
 import multer from 'multer';
 import mammoth from 'mammoth';
 import { createRequire } from 'module';
@@ -16,41 +16,27 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const app = express();
 const PORT = 3000;
 
-// Initialize SQLite Database
-const db = new sqlite3.Database('database.sqlite');
-
-db.serialize(() => {
-  // Users table
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    firebase_uid TEXT UNIQUE,
-    email TEXT UNIQUE NOT NULL,
-    first_name TEXT,
-    last_name TEXT,
-    country TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-  db.run("ALTER TABLE users ADD COLUMN firebase_uid TEXT UNIQUE", () => { });
+// Initialize PostgreSQL Connection Pool
+const pool = new pg.Pool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'password',
+  database: process.env.DB_NAME || 'ragquery_db',
+  port: process.env.DB_PORT || 5432,
 });
 
-// Documents table
-db.run(`CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    content TEXT,
-    type TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
-
-// Projects table
-db.run(`CREATE TABLE IF NOT EXISTS projects (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    source_ids TEXT NOT NULL, -- JSON array of source IDs
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )`);
+// Test Database Connection
+async function testDbConnection() {
+  try {
+    const client = await pool.connect();
+    console.log('✅ Connected to PostgreSQL Database');
+    client.release();
+  } catch (err) {
+    console.error('❌ Database connection failed:', err.message);
+    console.error('   Please check your .env file and ensure PostgreSQL is running.');
+  }
+}
+testDbConnection();
 
 app.use(cors({
   origin: 'http://localhost:5173',
@@ -137,11 +123,17 @@ app.post('/api/proxy', async (req, res) => {
         const synthesisPrompt = `You are an expert AI assistant tasked with answering questions based on provided context.
 
 **IMPORTANT INSTRUCTIONS:**
-1. Read the user's query carefully and answer it directly
-2. Base your answer ONLY on the information provided in the context below
-3. Use clear, professional Markdown formatting (headers, bullet points, bold text)
-4. Be comprehensive yet concise
-5. If the context doesn't fully answer the query, acknowledge this and provide what information is available
+1. **Formatting**:
+   - Use **H1 (#)** for the main title.
+   - Use **H2 (##)** for major sections.
+   - Use **Numbered Lists (1., 2., 3.)** for steps or key points.
+   - **Bold Keys**: Start list items with a bold key if applicable (e.g., **Key:** Value).
+   - **Do NOT use bold text inline** within sentences unless it's a key term.
+2. **Detail**: Provide a **detailed, comprehensive explanation**. Explain *why* and *how*.
+3. **Structure**:
+   - Start with a clear **H1 Title**.
+   - Break down the answer into clear **H2 Sections**.
+   - Use **Numbered Lists** for processes or itemized details.
 
 **Context from the document:**
 ${topChunksText}
@@ -264,49 +256,59 @@ ${topChunksText}
 });
 
 // Auth Sync
-app.post('/api/auth/sync', (req, res) => {
+app.post('/api/auth/sync', async (req, res) => {
   const { uid, email, firstName, lastName, country } = req.body;
-  console.log('[Auth Sync] Request:', { uid, email });
+  console.log('[Auth Sync] Request:', { uid, email, country });
 
   if (!uid || !email) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  db.get('SELECT * FROM users WHERE firebase_uid = ?', [uid], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    const { rows } = await pool.query('SELECT * FROM user_details WHERE firebase_uid = $1', [uid]);
 
-    if (row) {
-      db.run(
-        'UPDATE users SET email = ?, first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name), country = COALESCE(?, country), updated_at = CURRENT_TIMESTAMP WHERE firebase_uid = ?',
-        [email, firstName, lastName, country, uid],
-        (err) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json({ message: 'User synced', action: 'updated' });
-        }
+    if (rows.length > 0) {
+      // Update existing user
+      await pool.query(
+        `UPDATE user_details SET 
+         email = $1, 
+         first_name = COALESCE($2, first_name), 
+         last_name = COALESCE($3, last_name), 
+         country = COALESCE($4, country), 
+         last_login = NOW(),
+         updated_at = NOW() 
+         WHERE firebase_uid = $5`,
+        [email, firstName, lastName, country, uid]
       );
+      res.json({ message: 'User details updated', action: 'updated' });
     } else {
-      db.run(
-        'INSERT INTO users (firebase_uid, email, first_name, last_name, country) VALUES (?, ?, ?, ?, ?)',
-        [uid, email, firstName || '', lastName || '', country || ''],
-        (err) => {
-          if (err) return res.status(500).json({ error: err.message });
-          res.json({ message: 'User synced', action: 'created' });
-        }
+      // Create new user
+      await pool.query(
+        `INSERT INTO user_details (firebase_uid, email, first_name, last_name, country, last_login) 
+         VALUES ($1, $2, $3, $4, $5, NOW())`,
+        [uid, email, firstName || '', lastName || '', country || '']
       );
+      res.json({ message: 'User details created', action: 'created' });
     }
-  });
+  } catch (err) {
+    console.error('[Auth Sync] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Upload Endpoint
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
+    const userId = req.headers['x-user-id'];
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     let content = '';
     const mimeType = req.file.mimetype;
     const title = req.file.originalname;
 
-    console.log(`[Upload] Processing: ${title} (${mimeType})`);
+    console.log(`[Upload] Processing: ${title} (${mimeType}) for user: ${userId}`);
 
     try {
       if (mimeType === 'application/pdf') {
@@ -327,15 +329,17 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'File empty or unparseable' });
     }
 
-    db.run(
-      'INSERT INTO documents (title, content, type) VALUES (?, ?, ?)',
-      [title, content, 'file'],
-      function (err) {
-        if (err) return res.status(500).json({ error: err.message });
-        console.log(`[Upload] Saved ID: ${this.lastID}`);
-        res.json({ id: this.lastID, content, title });
-      }
-    );
+    try {
+      const { rows } = await pool.query(
+        'INSERT INTO documents (title, content, type, user_id) VALUES ($1, $2, $3, $4) RETURNING id',
+        [title, content, 'file', userId]
+      );
+      console.log(`[Upload] Saved ID: ${rows[0].id}`);
+      res.json({ id: rows[0].id, content, title });
+    } catch (err) {
+      console.error('[Upload] DB Error:', err);
+      res.status(500).json({ error: err.message });
+    }
   } catch (error) {
     console.error('[Upload] Error:', error);
     res.status(500).json({ error: error.message });
@@ -343,49 +347,75 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // Documents Endpoints
-app.get('/api/documents', (req, res) => {
-  db.all('SELECT * FROM documents ORDER BY created_at DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.get('/api/documents', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM documents WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
     res.json({ documents: rows });
-  });
+  } catch (err) {
+    console.error('[Documents] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/documents', (req, res) => {
+app.post('/api/documents', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
   const { title, content, type } = req.body;
   if (!title || !content) return res.status(400).json({ error: 'Missing title/content' });
 
-  db.run(
-    'INSERT INTO documents (title, content, type) VALUES (?, ?, ?)',
-    [title, content, type || 'text'],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id: this.lastID });
-    }
-  );
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO documents (title, content, type, user_id) VALUES ($1, $2, $3, $4) RETURNING id',
+      [title, content, type || 'text', userId]
+    );
+    res.json({ id: rows[0].id });
+  } catch (err) {
+    console.error('[Documents] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/documents/:id', (req, res) => {
+app.delete('/api/documents/:id', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
   const { id } = req.params;
-  db.run('DELETE FROM documents WHERE id = ?', [id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    await pool.query('DELETE FROM documents WHERE id = $1 AND user_id = $2', [id, userId]);
     res.json({ message: 'Document deleted' });
-  });
+  } catch (err) {
+    console.error('[Documents] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Projects Endpoints
-app.get('/api/projects', (req, res) => {
-  db.all('SELECT * FROM projects ORDER BY created_at DESC', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    // Parse source_ids for frontend convenience
+app.get('/api/projects', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const { rows } = await pool.query('SELECT * FROM projects WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+    // Parse source_ids for frontend convenience (Postgres JSONB is returned as object/array automatically by pg)
     const projects = rows.map(p => ({
       ...p,
-      source_ids: JSON.parse(p.source_ids)
+      source_ids: typeof p.source_ids === 'string' ? JSON.parse(p.source_ids) : p.source_ids
     }));
     res.json({ projects });
-  });
+  } catch (err) {
+    console.error('[Projects] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.post('/api/projects', (req, res) => {
+app.post('/api/projects', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
   const { name, source_ids } = req.body;
   if (!name || !source_ids || !Array.isArray(source_ids)) {
     return res.status(400).json({ error: 'Missing name or invalid source_ids' });
@@ -395,17 +425,22 @@ app.post('/api/projects', (req, res) => {
     return res.status(400).json({ error: 'Projects can have a maximum of 5 sources' });
   }
 
-  db.run(
-    'INSERT INTO projects (name, source_ids) VALUES (?, ?)',
-    [name, JSON.stringify(source_ids)],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ id: this.lastID, name, source_ids });
-    }
-  );
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO projects (name, source_ids, user_id) VALUES ($1, $2, $3) RETURNING id',
+      [name, JSON.stringify(source_ids), userId]
+    );
+    res.json({ id: rows[0].id, name, source_ids });
+  } catch (err) {
+    console.error('[Projects] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.put('/api/projects/:id', (req, res) => {
+app.put('/api/projects/:id', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
   const { id } = req.params;
   const { name } = req.body;
 
@@ -413,18 +448,27 @@ app.put('/api/projects/:id', (req, res) => {
     return res.status(400).json({ error: 'Missing name' });
   }
 
-  db.run('UPDATE projects SET name = ? WHERE id = ?', [name, id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    await pool.query('UPDATE projects SET name = $1 WHERE id = $2 AND user_id = $3', [name, id, userId]);
     res.json({ message: 'Project renamed', id, name });
-  });
+  } catch (err) {
+    console.error('[Projects] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.delete('/api/projects/:id', (req, res) => {
+app.delete('/api/projects/:id', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
   const { id } = req.params;
-  db.run('DELETE FROM projects WHERE id = ?', [id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+  try {
+    await pool.query('DELETE FROM projects WHERE id = $1 AND user_id = $2', [id, userId]);
     res.json({ message: 'Project deleted' });
-  });
+  } catch (err) {
+    console.error('[Projects] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Ares Chat
@@ -433,8 +477,8 @@ app.post('/api/chat/ares', async (req, res) => {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: 'Missing query' });
 
-    db.all('SELECT * FROM documents', [], async (err, docs) => {
-      if (err) return res.status(500).json({ error: err.message });
+    try {
+      const { rows: docs } = await pool.query('SELECT * FROM documents');
 
       if (docs.length === 0) {
         return res.json({ response: "I don't have any memories yet. Upload some documents!" });
@@ -475,7 +519,10 @@ app.post('/api/chat/ares', async (req, res) => {
         console.error('[Ares] Error:', err);
         res.status(500).json({ error: err.message });
       }
-    });
+    } catch (err) {
+      console.error('[Ares] DB Error:', err);
+      res.status(500).json({ error: err.message });
+    }
   } catch (error) {
     console.error('[Ares] Error:', error);
     res.status(500).json({ error: error.message });

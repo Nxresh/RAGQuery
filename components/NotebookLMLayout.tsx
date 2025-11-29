@@ -21,7 +21,7 @@ interface Source {
 interface ConversationItem {
     id: number;
     query: string;
-    result: RAGResult;
+    result?: RAGResult;
     timestamp: Date;
 }
 
@@ -56,9 +56,11 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
     // Load sources and projects from backend
     useEffect(() => {
-        fetchSources();
-        fetchProjects();
-    }, []);
+        if (user) {
+            fetchSources();
+            fetchProjects();
+        }
+    }, [user]);
 
     useEffect(() => {
         scrollToBottom();
@@ -70,7 +72,11 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
     const fetchSources = async () => {
         try {
-            const response = await fetch('/api/documents');
+            const response = await fetch('/api/documents', {
+                headers: {
+                    'X-User-Id': user?.uid || ''
+                }
+            });
             const data = await response.json();
             setSources(data.documents || []);
             // Only reset selected sources if we're not in a project view (optional logic)
@@ -82,7 +88,11 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
     const fetchProjects = async () => {
         try {
-            const response = await fetch('/api/projects');
+            const response = await fetch('/api/projects', {
+                headers: {
+                    'X-User-Id': user?.uid || ''
+                }
+            });
             const data = await response.json();
             setProjects(data.projects || []);
         } catch (err) {
@@ -93,7 +103,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     const saveSource = async (title: string, content: string, type: string) => {
         const response = await fetch('/api/documents', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-User-Id': user?.uid || ''
+            },
             body: JSON.stringify({ title, content, type })
         });
 
@@ -154,6 +167,9 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
                 const response = await fetch('/api/upload', {
                     method: 'POST',
+                    headers: {
+                        'X-User-Id': user?.uid || ''
+                    },
                     body: formData
                 });
 
@@ -227,7 +243,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     const handleDeleteSource = async (id: number) => {
         try {
             await fetch(`/api/documents/${id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'X-User-Id': user?.uid || ''
+                }
             });
             await fetchSources();
             setSelectedSources(prev => prev.filter(sid => sid !== id));
@@ -260,10 +279,16 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         setIsQuerying(true);
         setError(null);
 
-        // Add user message immediately
+        // Add user message immediately (Optimistic UI)
         const tempId = Date.now();
         const query = currentQuery;
         setCurrentQuery('');
+
+        setConversations(prev => [...prev, {
+            id: tempId,
+            query,
+            timestamp: new Date()
+        }]);
 
         try {
             const selectedSourcesData = sources.filter(s => selectedSources.includes(s.id));
@@ -285,17 +310,15 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
             const data = await response.json();
 
-            // Add to conversation history
-            setConversations(prev => [...prev, {
-                id: tempId,
-                query,
-                result: data,
-                timestamp: new Date()
-            }]);
+            // Update the placeholder message with the actual result
+            setConversations(prev => prev.map(msg =>
+                msg.id === tempId ? { ...msg, result: data } : msg
+            ));
         } catch (err) {
             console.error('Query error:', err);
             setError(err instanceof Error ? err.message : 'Query failed');
-            // Restore query if failed?
+            // Remove the optimistic message on failure
+            setConversations(prev => prev.filter(msg => msg.id !== tempId));
             setCurrentQuery(query);
         } finally {
             setIsQuerying(false);
@@ -325,7 +348,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         try {
             const response = await fetch('/api/projects', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Id': user?.uid || ''
+                },
                 body: JSON.stringify({ name, source_ids: selectedSources })
             });
 
@@ -349,7 +375,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         try {
             const response = await fetch(`/api/projects/${project.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Id': user?.uid || ''
+                },
                 body: JSON.stringify({ name: newName })
             });
 
@@ -367,7 +396,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
 
         try {
             const response = await fetch(`/api/projects/${project.id}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: {
+                    'X-User-Id': user?.uid || ''
+                }
             });
 
             if (!response.ok) throw new Error('Failed to delete project');
@@ -505,53 +537,58 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1a7 7 0 0 1 7-7V5.73C9.4 5.39 9 4.74 9 4a2 2 0 0 1 2-2z"></path><path d="M8 14h8"></path><path d="M11 17h2"></path></svg>
                                                 </div>
                                                 <div className="message-content">
-                                                    <div className="prose prose-invert prose-sm max-w-none">
-                                                        <TypewriterText text={item.result.synthesizedAnswer || ''} speed={10} />
-
-                                                    </div>
-
-                                                    {/* Sources */}
-                                                    {item.result.rankedChunks && item.result.rankedChunks.length > 0 && (
-                                                        <div className="mt-4 pt-4 border-t border-neutral-800">
-                                                            <p className="text-xs font-semibold text-neutral-500 mb-2">Sources:</p>
-                                                            <div className="space-y-2">
-                                                                {item.result.rankedChunks.slice(0, 3).map((chunk, idx) => (
-                                                                    <div key={idx} className="bg-neutral-900 border border-neutral-800 rounded p-2 text-xs text-neutral-400">
-                                                                        <div className="flex justify-between mb-1">
-                                                                            <span className="font-medium text-orange-500">Relevance: {chunk.relevanceScore}%</span>
-                                                                        </div>
-                                                                        <p className="line-clamp-2">{chunk.chunkText}</p>
-                                                                    </div>
-                                                                ))}
+                                                    {item.result ? (
+                                                        <>
+                                                            <div className="prose prose-invert prose-sm max-w-none">
+                                                                <TypewriterText text={item.result.synthesizedAnswer || ''} speed={10} />
                                                             </div>
+
+                                                            {/* Sources */}
+                                                            {item.result.rankedChunks && item.result.rankedChunks.length > 0 && (
+                                                                <div className="mt-4 pt-4 border-t border-neutral-800">
+                                                                    <p className="text-xs font-semibold text-neutral-500 mb-2">Sources:</p>
+                                                                    <div className="space-y-2">
+                                                                        {item.result.rankedChunks.slice(0, 3).map((chunk, idx) => (
+                                                                            <div key={idx} className="bg-neutral-900 border border-neutral-800 rounded p-2 text-xs text-neutral-400">
+                                                                                <div className="flex justify-between mb-1">
+                                                                                    <span className="font-medium text-orange-500">Relevance: {chunk.relevanceScore}%</span>
+                                                                                </div>
+                                                                                <p className="line-clamp-2">{chunk.chunkText}</p>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex items-center gap-3 h-full">
+                                                            <div className="flex gap-1.5 items-center">
+                                                                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                                                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                                                <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                                            </div>
+                                                            <span className="text-sm text-neutral-400 animate-pulse">Analyzing sources...</span>
                                                         </div>
                                                     )}
                                                 </div>
                                             </div>
                                         </React.Fragment>
                                     ))}
-
-                                    {isQuerying && (
-                                        <div className="message-row model">
-                                            <div className="message-avatar model-avatar">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h1a7 7 0 0 1 7-7V5.73C9.4 5.39 9 4.74 9 4a2 2 0 0 1 2-2z"></path><path d="M8 14h8"></path><path d="M11 17h2"></path></svg>
-                                            </div>
-                                            <div className="message-content">
-                                                <div className="flex gap-1.5 items-center h-full">
-                                                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
                                     <div ref={messagesEndRef} />
                                 </div>
                             )}
                         </div>
 
                         {/* ========== INPUT BOX ========== */}
-                        <div className="chat-input-container">
+                        <div className="chat-input-container relative">
+                            {error && (
+                                <div className="absolute bottom-full mb-4 left-0 right-0 mx-4 bg-red-900/80 border border-red-700 text-red-200 px-4 py-3 rounded-lg text-sm flex justify-between items-center backdrop-blur-sm">
+                                    <span>{error}</span>
+                                    <button onClick={() => setError(null)} className="text-red-200 hover:text-white">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                    </button>
+                                </div>
+                            )}
                             <textarea
                                 className="chat-input"
                                 placeholder="Message ARES..."

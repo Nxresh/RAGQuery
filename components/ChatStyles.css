@@ -333,3 +333,41 @@
 ::-webkit-scrollbar-thumb:hover {
     background: #52525b;
 }
+
+/* ========== REFINED MARKDOWN STYLES ========== */
+.prose h1 {
+    font-size: 1.38em !important;
+    font-weight: 800 !important;
+    margin-bottom: 0.8em !important;
+    color: var(--text-primary) !important;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.3em;
+}
+
+.prose h2 {
+    font-size: 1.8em !important;
+    font-weight: 700 !important;
+    margin-top: 1.2em !important;
+    margin-bottom: 0.6em !important;
+    color: var(--text-primary) !important;
+}
+
+.prose h3 {
+    font-size: 1.4em !important;
+    font-weight: 600 !important;
+    margin-top: 1em !important;
+}
+
+.prose ol {
+    list-style-type: decimal !important;
+    padding-left: 1.5em !important;
+}
+
+.prose li {
+    margin-bottom: 0.5em !important;
+}
+
+.prose strong {
+    color: var(--accent-orange) !important;
+    font-weight: 700 !important;
+}

@@ -19,7 +19,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
         lastName: '',
         email: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        country: ''
     });
 
     useEffect(() => {
@@ -44,7 +45,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
         setError('');
         setIsLoading(true);
         try {
-            await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+            const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+
+            // Sync user details on login (update last_login and ensure name is synced)
+            const displayName = userCredential.user.displayName || '';
+            const [firstName, ...lastNameParts] = displayName.split(' ');
+            const lastName = lastNameParts.join(' ');
+
+            await fetch('http://localhost:3000/api/auth/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userCredential.user.uid,
+                    email: userCredential.user.email,
+                    firstName: firstName || '',
+                    lastName: lastName || ''
+                })
+            });
+
         } catch (err: any) {
             setError(err.message || 'Login failed');
         } finally {
@@ -66,6 +84,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
             await updateProfile(userCredential.user, {
                 displayName: `${signupData.firstName} ${signupData.lastName}`
             });
+
+            // Sync user details to backend
+            await fetch('http://localhost:3000/api/auth/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userCredential.user.uid,
+                    email: signupData.email,
+                    firstName: signupData.firstName,
+                    lastName: signupData.lastName,
+                    country: signupData.country
+                })
+            });
+
             await sendEmailVerification(userCredential.user);
             setSuccessMsg(`Account created! Verification email sent to ${signupData.email}`);
         } catch (err: any) {
@@ -221,6 +253,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
                             <input type="text" placeholder="First Name" value={signupData.firstName} onChange={e => setSignupData({ ...signupData, firstName: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
                             <input type="text" placeholder="Last Name" value={signupData.lastName} onChange={e => setSignupData({ ...signupData, lastName: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
                         </div>
+                        <input type="text" placeholder="Country" value={signupData.country} onChange={e => setSignupData({ ...signupData, country: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
                         <input type="email" placeholder="Email" value={signupData.email} onChange={e => setSignupData({ ...signupData, email: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
                         <input type="password" placeholder="Password" value={signupData.password} onChange={e => setSignupData({ ...signupData, password: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
                         <input type="password" placeholder="Confirm Password" value={signupData.confirmPassword} onChange={e => setSignupData({ ...signupData, confirmPassword: e.target.value })} className="bg-neutral-800 border-none p-3 rounded-lg text-sm text-white outline-none focus:ring-1 focus:ring-orange-500 w-full" required />
