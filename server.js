@@ -405,6 +405,20 @@ app.post('/api/projects', (req, res) => {
   );
 });
 
+app.put('/api/projects/:id', (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: 'Missing name' });
+  }
+
+  db.run('UPDATE projects SET name = ? WHERE id = ?', [name, id], (err) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ message: 'Project renamed', id, name });
+  });
+});
+
 app.delete('/api/projects/:id', (req, res) => {
   const { id } = req.params;
   db.run('DELETE FROM projects WHERE id = ?', [id], (err) => {

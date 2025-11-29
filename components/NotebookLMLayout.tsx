@@ -6,6 +6,7 @@ import { RAGResult } from '../types';
 import { TypewriterText } from './TypewriterText';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./ui/sidebar"
 import { AppSidebar } from "./app-sidebar"
+import { LibraryModal } from './LibraryModal';
 import { User } from 'firebase/auth';
 import './ChatStyles.css';
 
@@ -51,6 +52,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     // Projects & Search State
     const [projects, setProjects] = useState<Project[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isLibraryOpen, setIsLibraryOpen] = useState(false);
 
     // Load sources and projects from backend
     useEffect(() => {
@@ -340,6 +342,49 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         }
     };
 
+    const handleRenameProject = async (project: Project) => {
+        const newName = prompt('Enter new project name:', project.name);
+        if (!newName || newName === project.name) return;
+
+        try {
+            const response = await fetch(`/api/projects/${project.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newName })
+            });
+
+            if (!response.ok) throw new Error('Failed to rename project');
+
+            await fetchProjects();
+        } catch (err) {
+            console.error('Rename project error:', err);
+            alert('Failed to rename project');
+        }
+    };
+
+    const handleDeleteProject = async (project: Project) => {
+        if (!confirm(`Are you sure you want to delete project "${project.name}"?`)) return;
+
+        try {
+            const response = await fetch(`/api/projects/${project.id}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Failed to delete project');
+
+            await fetchProjects();
+            // If the deleted project was selected, clear selection
+            if (selectedSources.length > 0 && JSON.stringify(selectedSources) === JSON.stringify(project.source_ids)) {
+                setSelectedSources([]);
+                setConversations([]);
+                setCurrentQuery('');
+            }
+        } catch (err) {
+            console.error('Delete project error:', err);
+            alert('Failed to delete project');
+        }
+    };
+
     const handleSelectProject = (project: Project) => {
         setSelectedSources(project.source_ids);
         setConversations([]); // Optional: clear chat when switching projects
@@ -368,6 +413,9 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                     onCreateProject={handleCreateProject}
                     searchQuery={searchQuery}
                     onSearchChange={setSearchQuery}
+                    onRenameProject={handleRenameProject}
+                    onDeleteProject={handleDeleteProject}
+                    onOpenLibrary={() => setIsLibraryOpen(true)}
                 >
                     <div className="mb-4">
                         <h2 className="text-xs font-medium text-neutral-500 mb-2 px-2 uppercase tracking-wider">Sources</h2>
@@ -561,6 +609,12 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                     </div>
                 </div>
             )}
+
+            <LibraryModal
+                isOpen={isLibraryOpen}
+                onClose={() => setIsLibraryOpen(false)}
+                sources={sources}
+            />
         </SidebarProvider>
     );
 };

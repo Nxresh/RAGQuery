@@ -2,18 +2,6 @@ import React from "react"
 import { User } from "firebase/auth"
 import { useSidebar } from "./ui/sidebar"
 
-// Mock chat history
-const chatHistory = [
-    "UI button style details",
-    "Resume sharing options",
-    "Email rewrite suggestion",
-    "Google antigravity tries limit",
-    "Global recession status",
-    "Git push error fix",
-    "Managing a slip up",
-    "Arun ice cream calories"
-]
-
 interface Project {
     id: number;
     name: string;
@@ -30,6 +18,9 @@ interface AppSidebarProps extends React.ComponentProps<"div"> {
     onCreateProject?: () => void;
     searchQuery?: string;
     onSearchChange?: (query: string) => void;
+    onRenameProject?: (project: Project) => void;
+    onDeleteProject?: (project: Project) => void;
+    onOpenLibrary?: () => void;
 }
 
 export function AppSidebar({
@@ -42,6 +33,9 @@ export function AppSidebar({
     onCreateProject,
     searchQuery = '',
     onSearchChange,
+    onRenameProject,
+    onDeleteProject,
+    onOpenLibrary,
     ...props
 }: AppSidebarProps) {
     const { open } = useSidebar()
@@ -72,7 +66,6 @@ export function AppSidebar({
                 </button>
 
                 {/* Navigation Links */}
-                {/* Navigation Links */}
                 <nav className="space-y-1">
                     {/* Search Input */}
                     <div className="px-3 py-2">
@@ -91,7 +84,10 @@ export function AppSidebar({
                         </div>
                     </div>
 
-                    <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900 rounded-md transition-colors">
+                    <button
+                        onClick={onOpenLibrary}
+                        className="flex items-center gap-3 w-full px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900 rounded-md transition-colors"
+                    >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M3 6h18M3 12h18M3 18h18" />
                         </svg>
@@ -111,16 +107,39 @@ export function AppSidebar({
                         </div>
                         <div className="mt-1 space-y-0.5">
                             {projects.map(project => (
-                                <button
-                                    key={project.id}
-                                    onClick={() => onSelectProject?.(project)}
-                                    className="flex items-center gap-3 w-full px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-900 rounded-md transition-colors truncate"
-                                >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500">
-                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                                    </svg>
-                                    <span className="truncate">{project.name}</span>
-                                </button>
+                                <div key={project.id} className="group flex items-center w-full hover:bg-neutral-900 rounded-md transition-colors pr-2">
+                                    <button
+                                        onClick={() => onSelectProject?.(project)}
+                                        className="flex-1 flex items-center gap-3 px-3 py-2 text-sm text-neutral-300 truncate text-left"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-500 flex-shrink-0">
+                                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                        </svg>
+                                        <span className="truncate">{project.name}</span>
+                                    </button>
+                                    <div className="hidden group-hover:flex items-center gap-1">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onRenameProject?.(project); }}
+                                            className="p-1 text-neutral-500 hover:text-white"
+                                            title="Rename"
+                                        >
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                            </svg>
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); onDeleteProject?.(project); }}
+                                            className="p-1 text-neutral-500 hover:text-red-400"
+                                            title="Delete"
+                                        >
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             ))}
                             {projects.length === 0 && (
                                 <div className="px-3 py-2 text-xs text-neutral-600 italic">No projects yet</div>
@@ -130,24 +149,9 @@ export function AppSidebar({
                 </nav>
             </div>
 
-            {/* Content Section (Sources / History) */}
+            {/* Content Section (Sources) */}
             <div className="flex-1 overflow-y-auto px-3 py-2">
                 {children}
-
-                {/* Mock History (Optional - can be removed if children are present, or kept below) */}
-                <div className="mt-6">
-                    <div className="text-xs font-medium text-neutral-500 mb-2 px-2">Recent Chats</div>
-                    <div className="space-y-0.5">
-                        {chatHistory.map((title, i) => (
-                            <button
-                                key={i}
-                                className="flex items-center w-full px-2 py-2 text-sm text-neutral-300 hover:bg-neutral-900 rounded-md transition-colors text-left truncate"
-                            >
-                                <span className="truncate">{title}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
             </div>
 
             {/* User Profile Section */}
