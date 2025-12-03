@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 dotenv.config();
-import fs from 'fs';
 
 const API_KEY = process.env.API_KEY;
 const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`;
@@ -10,13 +9,12 @@ async function getModels() {
         const response = await fetch(url);
         const data = await response.json();
         if (data.models) {
-            const modelNames = data.models
-                .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent"))
-                .map(m => m.name)
-                .join('\n');
-
-            fs.writeFileSync('models.txt', modelNames, 'utf8');
-            console.log("Models written to models.txt");
+            console.log("Available Models:");
+            data.models.forEach(m => {
+                if (m.supportedGenerationMethods && m.supportedGenerationMethods.includes("generateContent")) {
+                    console.log(`- ${m.name}`);
+                }
+            });
         } else {
             console.log("No models found or error:", data);
         }

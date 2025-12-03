@@ -5,7 +5,12 @@ interface Source {
     title: string;
     type: string;
     created_at: string;
+    is_starred?: boolean;
 }
+
+// ... (SourceManagerProps remains same)
+
+
 
 interface SourceManagerProps {
     sources: Source[];
@@ -63,7 +68,7 @@ export const SourceManager: React.FC<SourceManagerProps> = ({
                             onClick={() => onToggleSource(source.id)}
                             className={`group relative flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-300 border ${isSelected
                                 ? 'bg-neutral-800 border-orange-500/50 shadow-lg shadow-orange-500/5'
-                                : 'bg-neutral-900/50 border-transparent hover:bg-neutral-800 hover:border-neutral-700'
+                                : 'bg-neutral-900/50 border-transparent hover:bg-gradient-to-br hover:from-orange-500/10 hover:to-red-500/10 hover:border-orange-500/50 hover:shadow-[0_0_15px_-3px_rgba(249,115,22,0.2)]'
                                 }`}
                         >
                             {/* Number Badge */}
@@ -78,9 +83,16 @@ export const SourceManager: React.FC<SourceManagerProps> = ({
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
-                                <div className={`text-sm font-medium truncate transition-colors ${isSelected ? 'text-white' : 'text-neutral-300 group-hover:text-white'
-                                    }`}>
-                                    {source.title}
+                                <div className="flex items-center gap-2">
+                                    <div className={`text-sm font-medium truncate transition-colors ${isSelected ? 'text-white' : 'text-neutral-300 group-hover:text-white'
+                                        }`}>
+                                        {source.title}
+                                    </div>
+                                    {source.is_starred && (
+                                        <svg className="w-4 h-4 text-yellow-400 fill-yellow-400 flex-shrink-0" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                        </svg>
+                                    )}
                                 </div>
                                 <div className="text-[10px] text-neutral-500 mt-0.5">
                                     {new Date(source.created_at).toLocaleDateString()}

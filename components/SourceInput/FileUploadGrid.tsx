@@ -60,7 +60,7 @@ export const FileUploadGrid: React.FC<FileUploadGridProps> = ({
         return (
             <div
                 {...getRootProps()}
-                className={`relative group cursor-pointer bg-neutral-900 rounded-lg p-2 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-orange-500/20 ${isDragActive ? 'bg-neutral-800/50 scale-105 shadow-lg shadow-orange-500/30' : ''
+                className={`relative group cursor-pointer bg-neutral-900 border border-neutral-800 rounded-xl p-2 transition-all duration-300 shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] hover:scale-105 hover:bg-gradient-to-br hover:from-orange-500/20 hover:to-red-500/20 hover:border-orange-500/50 hover:text-orange-100 hover:shadow-[0_0_25px_-5px_rgba(249,115,22,0.5)] ${isDragActive ? 'bg-orange-500/30 scale-105 shadow-orange-500/40' : ''
                     } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
                 <input {...getInputProps()} />
@@ -109,7 +109,7 @@ export const FileUploadGrid: React.FC<FileUploadGridProps> = ({
                 {/* Website (Manual) */}
                 <div
                     onClick={() => !isProcessing && alert('Use the link input above to add websites')}
-                    className={`relative group cursor-pointer bg-neutral-900 rounded-lg p-2 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-orange-500/20 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''
+                    className={`relative group cursor-pointer bg-neutral-900 border border-neutral-800 rounded-xl p-2 transition-all duration-300 shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] hover:scale-105 hover:bg-gradient-to-br hover:from-orange-500/20 hover:to-red-500/20 hover:border-orange-500/50 hover:text-orange-100 hover:shadow-[0_0_25px_-5px_rgba(249,115,22,0.5)] ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                 >
                     <div className="flex flex-col items-center justify-center space-y-1">
@@ -125,7 +125,7 @@ export const FileUploadGrid: React.FC<FileUploadGridProps> = ({
                 {/* Text Input */}
                 <div
                     onClick={() => !isProcessing && onTextUpload()}
-                    className={`relative group cursor-pointer bg-neutral-900 rounded-lg p-2 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-orange-500/20 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''
+                    className={`relative group cursor-pointer bg-neutral-900 border border-neutral-800 rounded-xl p-2 transition-all duration-300 shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] hover:scale-105 hover:bg-gradient-to-br hover:from-orange-500/20 hover:to-red-500/20 hover:border-orange-500/50 hover:text-orange-100 hover:shadow-[0_0_25px_-5px_rgba(249,115,22,0.5)] ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                 >
                     <div className="flex flex-col items-center justify-center space-y-1">

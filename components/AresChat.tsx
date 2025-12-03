@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChatMessage } from '../types';
 import { getDocuments, deleteDocument, StoredDocument } from '../services/geminiService';
 import { TypewriterText } from './TypewriterText';
+import { QueryBar } from './QueryInput/QueryBar';
 import './ChatStyles.css';
 
 export function AresChat() {
@@ -52,13 +53,14 @@ export function AresChat() {
         }
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+    const handleSend = async (text?: string) => {
+        const queryText = typeof text === 'string' ? text : input;
+        if (!queryText.trim() || isLoading) return;
 
-        const userMsg: ChatMessage = { role: 'user', content: input };
+        const userMsg: ChatMessage = { role: 'user', content: queryText };
         setHistory(prev => [...prev, userMsg]);
 
-        const newHistory = [input, ...queryHistory.filter(q => q !== input)].slice(0, 10);
+        const newHistory = [queryText, ...queryHistory.filter(q => q !== queryText)].slice(0, 10);
         setQueryHistory(newHistory);
         localStorage.setItem('aresQueryHistory', JSON.stringify(newHistory));
 
@@ -69,7 +71,7 @@ export function AresChat() {
             const response = await fetch('/api/chat/ares', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: input, history })
+                body: JSON.stringify({ query: queryText, history })
             });
             const result = await response.json();
             const modelMsg: ChatMessage = { role: 'model', content: result.response };
@@ -115,8 +117,10 @@ export function AresChat() {
                         onClick={handleNewChat}
                         className="w-full px-4 py-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
                     >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 8v8" />
+                            <path d="M8 12h8" />
                         </svg>
                         New Conversation
                     </button>
@@ -186,8 +190,9 @@ export function AresChat() {
                         </div>
                         <div className="topbar-icon" onClick={handleNewChat} title="New Chat">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                                <circle cx="12" cy="12" r="10" />
+                                <path d="M12 8v8" />
+                                <path d="M8 12h8" />
                             </svg>
                         </div>
                         <div className="topbar-icon">👤</div>
@@ -253,19 +258,14 @@ export function AresChat() {
                     </div>
 
                     {/* ========== INPUT BOX ========== */}
-                    <div className="chat-input-container">
-                        <textarea
-                            className="chat-input"
-                            placeholder="Message Ares..."
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            rows={1}
+                    <div className="p-4 bg-white border-t border-gray-100">
+                        <QueryBar
+                            onSubmit={(text) => handleSend(text)}
+                            isLoading={isLoading}
                             disabled={isLoading}
-                        ></textarea>
-                        <button className="send-button" onClick={handleSend} disabled={!input.trim() || isLoading}>
-                            Send
-                        </button>
+                            value={input}
+                            onChange={setInput}
+                        />
                     </div>
                 </div>
             </div>

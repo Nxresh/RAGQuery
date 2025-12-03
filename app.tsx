@@ -3,8 +3,7 @@ import { onAuthStateChanged, User, sendEmailVerification } from 'firebase/auth';
 import { auth } from './firebase';
 import { NotebookLMLayout } from './components/NotebookLMLayout';
 import { AuthPage } from './components/Auth/AuthPage';
-
-
+import { Button } from './components/ui/button';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -12,7 +11,6 @@ function App() {
   const [view, setView] = useState<'login' | 'signup'>('login');
   const [verificationSent, setVerificationSent] = useState(false);
   const [resendError, setResendError] = useState('');
-
 
   useEffect(() => {
     // Handle initial hash
@@ -113,24 +111,27 @@ function App() {
           )}
 
           <div className="flex flex-col space-y-3">
-            <button
+            <Button
               onClick={handleCheckVerification}
-              className="bg-orange-600 hover:bg-orange-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300"
+              variant="premium"
+              className="w-full"
             >
               I've Verified My Email
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleResendVerification}
-              className="bg-neutral-800 hover:bg-neutral-700 text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300 border border-neutral-700"
+              variant="secondary"
+              className="w-full"
             >
               Resend Verification Email
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => auth.signOut()}
-              className="bg-transparent hover:bg-neutral-800 text-neutral-400 hover:text-white font-semibold px-6 py-3 rounded-lg transition-all duration-300"
+              variant="ghost"
+              className="w-full"
             >
               Sign Out
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -1,0 +1,38 @@
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        transition: background-color 0.2s;
+        }
+
+        .dock-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .dock-icon {
+            width: 60%;
+            height: 60%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .dock-icon svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .dock-label {
+            position: absolute;
+            top: -45px;
+            left: 50%;
+            background: rgba(0, 0, 0, 0.9);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }

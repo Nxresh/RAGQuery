@@ -5,6 +5,8 @@ import { saveDocument } from './services/geminiService';
 import { TypewriterText } from './components/TypewriterText';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "./components/ui/sidebar"
 import { AppSidebar } from "./components/app-sidebar"
+import Dock from './components/Dock/Dock';
+import { Home, MessageSquare, Settings, Archive, User as UserIcon } from 'lucide-react';
 
 
 // --- TYPES ---
@@ -251,6 +253,189 @@ const QueryInput: React.FC<{
             </button>
         </div>
     );
+};
+
+const ResultsDisplay: React.FC<{
+    results: RAGResult | null;
+    isLoading: boolean;
+    error: string | null;
+    hasSubmitted: boolean;
+}> = ({ results, isLoading, error, hasSubmitted }) => {
+    const WelcomeMessage = () => (
+        <div className="text-center p-8 border border-neutral-800 bg-neutral-950/50 rounded-2xl h-full flex flex-col justify-center items-center">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center mb-6"><SearchIcon className="w-8 h-8 text-white" /></div>
+            <h3 className="text-2xl font-semibold text-neutral-100 mb-2">Analysis Results</h3>
+            <p className="text-neutral-400 max-w-lg mx-auto">Provide a data source and ask a question to begin. The AI will generate a synthesized answer and show you the most relevant passages from the source text.</p>
+        </div>
+    );
+
+    const ErrorDisplay: React.FC<{ message: string }> = ({ message }) => (
+        <div className="bg-red-900/30 border border-red-700/50 text-red-300 px-4 py-3 rounded-xl" role="alert">
+            <strong className="font-bold">An Error Occurred</strong>
+            <span className="block mt-1">{message}</span>
+        </div>
+    );
+
+    const RelevanceBar: React.FC<{ score: number }> = ({ score }) => (
+        <div className="w-full bg-neutral-700/50 rounded-full h-1 my-1">
+            <div className="bg-gradient-to-r from-orange-500 to-orange-400 h-1 rounded-full" style={{ width: `${score}%` }}></div>
+        </div>
+    );
+
+    if (isLoading) return <div className="flex justify-center items-center h-full min-h-[400px]"><Loader /></div>;
+    if (error) return <ErrorDisplay message={error} />;
+    if (!hasSubmitted) return <WelcomeMessage />;
+    if (!results) return null;
+
+    return (
+        <div className="space-y-10">
+            <section>
+                <h2 className="text-xl font-semibold text-neutral-100 mb-4">Synthesized Answer</h2>
+                <div className="p-6 bg-neutral-900 border border-neutral-800 rounded-xl prose prose-invert max-w-none prose-p:text-neutral-300 prose-p:leading-relaxed">
+                    <p><TypewriterText text={results.synthesizedAnswer} speed={15} /></p>
+                </div>
+            </section>
+            <section>
+                <h2 className="text-xl font-semibold text-neutral-100 mb-4">Top Relevant Passages</h2>
+                <div className="space-y-4">
+                    {results.rankedChunks.map((chunk, index) => (
+                        <div key={index} className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 transition-all duration-300 hover:border-orange-500/30 hover:bg-neutral-800/20">
+                            <div className="flex justify-between items-center mb-3">
+                                <span className="text-sm font-medium text-orange-400">Relevance Score</span>
+                                <span className="text-sm font-semibold text-neutral-200">{chunk.relevanceScore}%</span>
+                            </div>
+                            <RelevanceBar score={chunk.relevanceScore} />
+                            <blockquote className="mt-4 text-neutral-400 border-l-2 border-neutral-700 pl-4 text-sm leading-relaxed">{chunk.chunkText}</blockquote>
+                        </div>
+                    ))}
+                </div>
+            </section>
+        </div>
+    );
+};
+
+
+// --- MAIN APP COMPONENT ---
+export default function RagApp({ user }: { user: User }): React.JSX.Element {
+    const [activeTab, setActiveTab] = useState<'home' | 'chat'>('home');
+    const [documentContent, setDocumentContent] = useState<string | null>(null);
+    const [fileName, setFileName] = useState<string | null>(null);
+    const [query, setQuery] = useState<string>('');
+    const [results, setResults] = useState<RAGResult | null>(null);
+    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isScraping, setIsScraping] = useState<boolean>(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const handleFileChange = async (file: File | null) => {
+        if (file) {
+            setIsLoading(true);
+            setError(null);
+            setResults(null);
+            try {
+                // Upload file to server (handles PDF/DOCX/TXT parsing and DB storage)
+                const { uploadFile } = await import('./services/geminiService');
+                const result = await uploadFile(file);
+                setDocumentContent(result.content);
+                setFileName(result.title);
+                console.log('File uploaded and saved to memory');
+            } catch (err) {
+                console.error('Failed to upload file:', err);
+                setError(err instanceof Error ? err.message : 'Failed to upload file');
+                setDocumentContent(null);
+                setFileName(null);
+            } finally {
+                setIsLoading(false);
+            }
+        } else {
+            setDocumentContent(null);
+            setFileName(null);
+        }
+    };
+
+    const handleUrlSubmit = useCallback(async (url: string) => {
+        if (!url.trim()) { setError('Please enter a valid URL.'); return; }
+        setIsScraping(true);
+        setError(null);
+        setResults(null);
+        setDocumentContent(null);
+        setFileName(null);
+        try {
+            const scrapedContent = await scrapeContentFromURL(url);
+            setDocumentContent(scrapedContent);
+            setFileName(url);
+
+            // Save to Memory
+            try {
+                await saveDocument(url, scrapedContent, 'url');
+                console.log('URL content saved to memory');
+            } catch (err) {
+                console.error('Failed to save URL to memory', err);
+            }
+
+        } catch (err) {
+            console.error(err);
+            setError(err instanceof Error ? err.message : 'An unknown error occurred during scraping.');
+            setDocumentContent(null);
+            setFileName(null);
+        } finally {
+            setIsScraping(false);
+        }
+    }, []);
+
+    const handleClearDataSource = () => {
+        setDocumentContent(null);
+        setFileName(null);
+        setResults(null);
+        setError(null);
+        setQuery('');
+    };
+
+    const handleSubmit = useCallback(async () => {
+        if (!query.trim() || !documentContent) { setError('Please provide a document or URL and enter a query.'); return; }
+        setIsLoading(true);
+        setError(null);
+        setResults(null);
+        try {
+            const ragResult = await performRAG(documentContent, query);
+            setResults(ragResult);
+        } catch (err) {
+            console.error(err);
+            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [documentContent, query]);
+
+    const handleNewChat = () => {
+        <div className="flex items-center gap-2">
+            <LogoIcon />
+            <span className="font-semibold text-neutral-200">RAGQuery</span>
+        </div>
+                    </header >
+
+        <main className="flex-1 p-4 md:p-8 overflow-auto">
+            {activeTab === 'home' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 max-w-7xl mx-auto">
+                    <div className="lg:col-span-4 xl:col-span-3 space-y-8">
+                        <section>
+                            <h2 className="text-lg font-medium text-neutral-400 mb-3">Data Source</h2>
+                            <DataSourceInput onFileChange={handleFileChange} onUrlSubmit={handleUrlSubmit} onClear={handleClearDataSource} fileName={fileName} isScraping={isScraping} />
+                        </section>
+                        <section>
+                            <h2 className="text-lg font-medium text-neutral-400 mb-3">Your Question</h2>
+                            <QueryInput query={query} setQuery={setQuery} onSubmit={handleSubmit} isDisabled={!documentContent || isLoading || isScraping} />
+                        </section>
+                    </div>
+                    <div className="lg:col-span-8 xl:col-span-9">
+                        <ResultsDisplay results={results} isLoading={isLoading} error={error} hasSubmitted={!!(isLoading || error || results)} />
+                    </div>
+                </div>
+            ) : (
+                <div className="h-[calc(100vh-100px)]">
+                    <AresChat />
+                </button>
+        </div>
+                    );
 };
 
 const ResultsDisplay: React.FC<{
