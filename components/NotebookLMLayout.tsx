@@ -137,7 +137,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                     body: JSON.stringify({ url })
                 });
 
-                if (!response.ok) throw new Error('Failed to process YouTube video');
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to process YouTube video');
+                }
 
                 const data = await response.json();
                 await saveSource(data.title, data.content, 'youtube', isStarred);

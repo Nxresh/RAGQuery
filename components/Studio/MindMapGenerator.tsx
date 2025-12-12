@@ -193,7 +193,7 @@ export const MindMapGenerator = ({ sources, onFileUpload, isProcessing }: { sour
         const context = sources.map(s => s.content || s.text || '').join('\n\n').slice(0, 20000);
 
         try {
-            const res = await fetch('http://localhost:3000/api/generate-mindmap', {
+            const res = await fetch('/api/generate-mindmap', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ topic, context })

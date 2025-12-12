@@ -25,6 +25,9 @@
     "mysql2": "^3.15.3",
     "pdf-parse": "^1.1.1",
     "pg": "^8.16.3",
+    "puppeteer": "^24.32.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-dropzone": "^14.3.8",
@@ -35,7 +38,9 @@
     "sqlite3": "^5.1.7",
     "tesseract.js": "^6.0.1",
     "youtube-caption-scraper": "^1.0.0",
-    "youtube-transcript": "^1.2.1"
+    "youtube-dl-exec": "^3.0.27",
+    "youtube-transcript": "^1.2.1",
+    "youtubei.js": "^16.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

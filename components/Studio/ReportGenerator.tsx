@@ -87,7 +87,7 @@ export const ReportGenerator = ({ sources, onFileUpload, isProcessing }: { sourc
         console.log('Generating report with format:', format);
 
         try {
-            const res = await fetch('http://localhost:3000/api/generate-report', {
+            const res = await fetch('/api/generate-report', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ topic, context, format })

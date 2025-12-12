@@ -15,7 +15,7 @@ import { exec } from 'child_process';
 import util from 'util';
 const execPromise = util.promisify(exec);
 const app = express();
-const PORT = 3000;
+const PORT = 5190;
 
 // Initialize PostgreSQL Connection Pool
 const pool = new pg.Pool({
@@ -163,13 +163,19 @@ app.post('/api/proxy', async (req, res) => {
       try {
         // Use semantic search with embeddings for better relevance
         const { semanticSearch } = await import('./semanticSearch.js');
+        // Retrieve top 5 Parent Contexts (Hierarchical RAG)
         const topChunks = await semanticSearch(documentContent, query, 5);
 
         console.log('[RAG] Semantic search complete');
-        console.log('[RAG] Top chunks count:', topChunks.length);
+        console.log('[RAG] Top Parent Contexts count:', topChunks.length);
         console.log('[RAG] Top relevance scores:', topChunks.map(c => c.relevanceScore + '%').join(', '));
 
-        const topChunksText = topChunks.map((c, i) => `${i + 1}. [${c.relevanceScore}%] ${c.chunkText}`).join('\n\n');
+        const topChunksText = topChunks.map((c, i) => `
+---
+### Context Section ${i + 1} (Relevance: ${c.relevanceScore}%)
+${c.chunkText}
+---
+`).join('\n');
 
         const synthesisPrompt = `You are an expert AI assistant tasked with answering questions based on provided context.
 
@@ -186,7 +192,7 @@ app.post('/api/proxy', async (req, res) => {
    - Break down the answer into clear **H2 Sections**.
    - Use **Numbered Lists** for processes or itemized details.
 
-**Context from the document:**
+**Context Sections from the document (Hierarchical Retrieval):**
 ${topChunksText}
 
 **User's Query:** ${query}
@@ -308,6 +314,7 @@ ${topChunksText}
 
 // YouTube Transcript Endpoint
 app.post('/api/process/youtube', async (req, res) => {
+  let videoId = null;
   try {
     const { url } = req.body;
     if (!url) return res.status(400).json({ error: 'Missing URL' });
@@ -315,7 +322,6 @@ app.post('/api/process/youtube', async (req, res) => {
     console.log('[YouTube] Processing URL:', url);
 
     // Extract Video ID
-    let videoId = null;
     try {
       const urlObj = new URL(url);
       if (urlObj.hostname.includes('youtube.com')) {
@@ -334,7 +340,16 @@ app.post('/api/process/youtube', async (req, res) => {
     console.log('[YouTube] Video ID:', videoId);
 
     // Fetch Transcript using standalone script to avoid stability issues
-    const { stdout } = await execPromise(`node fetch_youtube.js ${videoId}`);
+    console.log('[YouTube] Executing fetch_youtube.js...');
+    let stdout;
+    try {
+      const result = await execPromise(`node fetch_youtube.js ${videoId}`);
+      stdout = result.stdout;
+      console.log('[YouTube] Script execution successful');
+    } catch (execError) {
+      console.error('[YouTube] Script execution failed:', execError);
+      throw new Error(`Script execution failed: ${execError.message}`);
+    }
 
     let transcriptItems;
     try {
@@ -351,8 +366,14 @@ app.post('/api/process/youtube', async (req, res) => {
       throw new Error('No transcript available for this video');
     }
 
-    // Combine text
-    const content = transcriptItems.map(item => item.text).join(' ');
+    // Combine text into paragraphs for Hierarchical RAG
+    // Group every 15 lines (~1-2 mins) into a paragraph to provide structure
+    const content = transcriptItems.reduce((acc, item, index) => {
+      if (index % 15 === 0 && index !== 0) {
+        return acc + '\n\n' + item.text;
+      }
+      return acc + ' ' + item.text;
+    }, '');
 
     // We don't get the title from youtube-transcript, so we'll use a placeholder or try to fetch it
     // For now, a simple placeholder with ID is sufficient for the MVP
@@ -365,6 +386,11 @@ app.post('/api/process/youtube', async (req, res) => {
   } catch (err) {
     console.error('[YouTube] Error processing video:', videoId);
     console.error('[YouTube] Full Error:', err);
+
+    if (err.message.includes('No transcript available')) {
+      return res.status(400).json({ error: 'This video does not have captions/transcript available.' });
+    }
+
     res.status(500).json({ error: `Failed to process YouTube video: ${err.message}` });
   }
 });
@@ -650,12 +676,16 @@ app.post('/api/generate-mindmap', async (req, res) => {
     const { topic, context } = req.body;
     if (!topic) return res.status(400).json({ error: 'Missing topic' });
 
+    const { semanticSearch } = await import('./semanticSearch.js');
+    const topContexts = await semanticSearch(context, topic, 10);
+    const contextText = topContexts.map(c => c.chunkText).join('\n\n');
+
     const prompt = `Generate a comprehensive hierarchical mindmap for the topic: "${topic}".
     
     IMPORTANT: Use the following context to generate the mindmap.
     
     Context:
-    ${context ? context.slice(0, 30000) : 'No specific context provided.'}
+    ${contextText || 'No specific context provided.'}
     
     Output strictly valid JSON with this recursive structure:
     {
@@ -702,12 +732,16 @@ app.post('/api/generate-infographic', async (req, res) => {
 
     let prompt = '';
 
+    const { semanticSearch } = await import('./semanticSearch.js');
+    const topContexts = await semanticSearch(context, topic, 10);
+    const contextText = topContexts.map(c => c.chunkText).join('\n\n');
+
     if (mode === 'advanced') {
       console.log('[Infographic] Using ADVANCED mode prompt.');
       prompt = `
     You are an expert data visualization architect.
     Generate a JSON object for an "Advanced Visualization Dashboard" about "${topic}".
-    Use the provided context: ${context ? context.slice(0, 30000) : 'No specific context provided.'}
+    Use the provided context: ${contextText || 'No specific context provided.'}
 
     The output must be a valid JSON object with this structure:
     {
@@ -737,11 +771,11 @@ app.post('/api/generate-infographic', async (req, res) => {
        - For Bubble: Ensure 'z' (size) varies significantly. Spread points out to avoid clustering.
        - For Funnel: Use descending values to show a clear "funnel" effect (e.g., 100 -> 80 -> 60 -> 40).
        - For Streamgraph: Use 'value', 'value2', 'value3' to create layers.
-       - **"explanation"**: EVERY data point object MUST have an `explanation` field (1-2 sentences) describing that specific point's context.
-       - **"unit"**: For EACH chart, provide a `unit` string (e.g., "Billion Users", "USD", "%", "Tons") that applies to the values.
+       - **"explanation"**: EVERY data point object MUST have an 'explanation' field (1-2 sentences) describing that specific point's context.
+       - **"unit"**: For EACH chart, provide a 'unit' string (e.g., "Billion Users", "USD", "%", "Tons") that applies to the values.
 
     4. **Detailed Insights (CRITICAL)**:
-       - **"detailed_analysis"**: For EACH chart, you MUST provide a `detailed_analysis` string (2-3 sentences).
+       - **"detailed_analysis"**: For EACH chart, you MUST provide a 'detailed_analysis' string (2-3 sentences).
        - This text should explain *why* the data looks this way, what the *implications* are, and what the user should take away from it.
        - Do NOT just describe the numbers (e.g., "A is 10"). Analyze them (e.g., "The dominance of A suggests a strong market preference...").
 
@@ -758,7 +792,7 @@ app.post('/api/generate-infographic', async (req, res) => {
       prompt = `Generate comprehensive and detailed data for an infographic about: "${topic}".
     
     Context:
-    ${context ? context.slice(0, 30000) : 'No specific context provided.'}
+    ${contextText || 'No specific context provided.'}
     
     Output strictly valid JSON with this structure:
     {
@@ -822,10 +856,14 @@ app.post('/api/generate-slidedeck', async (req, res) => {
     const { topic, context } = req.body;
     if (!topic) return res.status(400).json({ error: 'Missing topic' });
 
+    const { semanticSearch } = await import('./semanticSearch.js');
+    const topContexts = await semanticSearch(context, topic, 10);
+    const contextText = topContexts.map(c => c.chunkText).join('\n\n');
+
     const prompt = `Generate a comprehensive, professional 5-7 slide presentation for: "${topic}".
 
       Context:
-    ${context ? context.slice(0, 30000) : 'No specific context provided.'}
+    ${contextText || 'No specific context provided.'}
     
     Output strictly valid JSON with this structure:
     {
@@ -954,10 +992,14 @@ app.post('/api/generate-report', async (req, res) => {
       `;
     }
 
+    const { semanticSearch } = await import('./semanticSearch.js');
+    const topContexts = await semanticSearch(context, topic, 10);
+    const contextText = topContexts.map(c => c.chunkText).join('\n\n');
+
     const prompt = `Generate a content piece for: "${topic}".
     
     Context:
-    ${context ? context.slice(0, 30000) : 'No specific context provided.'}
+    ${contextText || 'No specific context provided.'}
     
     ${styleGuide}
 

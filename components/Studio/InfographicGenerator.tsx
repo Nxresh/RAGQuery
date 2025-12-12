@@ -92,7 +92,7 @@ export const InfographicGenerator = ({ sources, onFileUpload, isProcessing }: { 
         const context = sources.map(s => s.content || s.text || '').join('\n\n').slice(0, 20000);
 
         try {
-            const res = await fetch('http://localhost:3000/api/generate-infographic', {
+            const res = await fetch('/api/generate-infographic', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ topic, context, mode: 'advanced' })

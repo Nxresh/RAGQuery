@@ -45,67 +45,112 @@ export function cosineSimilarity(vecA, vecB) {
     return dotProduct / (normA * normB);
 }
 
-// Better chunking with overlapping windows
-export function createChunks(text, chunkSize = 500, overlap = 100) {
-    const words = text.split(/\s+/);
-    const chunks = [];
+// Hierarchical chunking: Parent (Context) -> Child (Search)
+export function createHierarchicalChunks(text, parentSize = 1000, childSize = 200, childOverlap = 50) {
+    const paragraphs = text.split(/\n\s*\n/); // Split by paragraphs
+    const hierarchy = [];
 
-    for (let i = 0; i < words.length; i += (chunkSize - overlap)) {
-        const chunk = words.slice(i, i + chunkSize).join(' ');
-        if (chunk.trim().length > 50) { // Only include substantial chunks
-            chunks.push({
-                text: chunk.trim(),
-                startIndex: i,
-                endIndex: Math.min(i + chunkSize, words.length)
+    let currentParentWords = [];
+    let currentParentStartIndex = 0;
+
+    for (let i = 0; i < paragraphs.length; i++) {
+        const para = paragraphs[i].trim();
+        if (!para) continue;
+
+        const paraWords = para.split(/\s+/);
+        currentParentWords.push(...paraWords);
+
+        // If parent is big enough or it's the last paragraph, finalize the parent
+        if (currentParentWords.length >= parentSize || i === paragraphs.length - 1) {
+            const parentText = currentParentWords.join(' ');
+            const parentId = `parent_${hierarchy.length}`;
+
+            // Create children from this parent
+            const children = [];
+            for (let j = 0; j < currentParentWords.length; j += (childSize - childOverlap)) {
+                const childChunk = currentParentWords.slice(j, j + childSize).join(' ');
+                if (childChunk.length > 50) {
+                    children.push({
+                        text: childChunk,
+                        parentId: parentId
+                    });
+                }
+            }
+
+            hierarchy.push({
+                id: parentId,
+                text: parentText,
+                children: children
             });
+
+            // Reset for next parent
+            currentParentWords = [];
         }
     }
 
-    return chunks;
+    return hierarchy;
 }
 
-// Semantic search: find most relevant chunks
+// Semantic search: find most relevant chunks using Hierarchical Retrieval
 export async function semanticSearch(documentContent, query, topK = 5) {
-    console.log('[Semantic Search] Starting...');
+    console.log('[Semantic Search] Starting Hierarchical Retrieval...');
 
-    // Create overlapping chunks for better coverage
-    const chunks = createChunks(documentContent, 500, 100);
-    console.log(`[Semantic Search] Created ${chunks.length} chunks`);
+    // 1. Create Hierarchy
+    const hierarchy = createHierarchicalChunks(documentContent);
+    const allChildren = hierarchy.flatMap(p => p.children);
+    console.log(`[Semantic Search] Created ${hierarchy.length} parent contexts and ${allChildren.length} child search chunks`);
 
-    // Generate query embedding
+    if (allChildren.length === 0) {
+        console.warn('[Semantic Search] No chunks created. Text might be too short.');
+        return [];
+    }
+
+    // 2. Generate query embedding
     console.log('[Semantic Search] Generating query embedding...');
     const queryEmbedding = await generateEmbedding(query);
 
-    // Generate embeddings for all chunks (batch if needed)
-    console.log('[Semantic Search] Generating chunk embeddings...');
-    const chunkEmbeddings = await Promise.all(
-        chunks.map(chunk => generateEmbedding(chunk.text))
+    // 3. Generate embeddings for all CHILDREN (batch if needed)
+    console.log('[Semantic Search] Generating child embeddings...');
+    // In production, you'd batch this. For now, Promise.all is okay for reasonable sizes.
+    const childEmbeddings = await Promise.all(
+        allChildren.map(child => generateEmbedding(child.text))
     );
 
-    // Calculate similarities
+    // 4. Calculate similarities for children
     console.log('[Semantic Search] Calculating similarities...');
-    const scoredChunks = chunks.map((chunk, idx) => {
-        const similarity = cosineSimilarity(queryEmbedding, chunkEmbeddings[idx]);
+    const scoredChildren = allChildren.map((child, idx) => {
+        const similarity = cosineSimilarity(queryEmbedding, childEmbeddings[idx]);
         return {
-            text: chunk.text,
-            score: Math.round(similarity * 100), // Convert to percentage
-            similarity: similarity,
-            startIndex: chunk.startIndex,
-            endIndex: chunk.endIndex
+            ...child,
+            score: Math.round(similarity * 100),
+            similarity: similarity
         };
     });
 
-    // Sort by similarity and return top K
-    const topChunks = scoredChunks
+    // 5. Sort children by relevance
+    const topChildren = scoredChildren
         .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, topK)
-        .map(chunk => ({
-            relevanceScore: chunk.score,
-            chunkText: chunk.text
-        }));
+        .slice(0, topK * 2); // Get more children to ensure we find enough unique parents
 
-    console.log(`[Semantic Search] Found ${topChunks.length} relevant chunks`);
-    console.log(`[Semantic Search] Top score: ${topChunks[0]?.relevanceScore}%`);
+    // 6. Map back to PARENTS (Deduplicate)
+    const seenParents = new Set();
+    const topParents = [];
 
-    return topChunks;
+    for (const child of topChildren) {
+        if (!seenParents.has(child.parentId)) {
+            const parent = hierarchy.find(p => p.id === child.parentId);
+            if (parent) {
+                topParents.push({
+                    relevanceScore: child.score, // Use child's score as proxy for relevance
+                    chunkText: parent.text, // RETURN THE FULL PARENT TEXT
+                    matchType: 'hierarchical_parent'
+                });
+                seenParents.add(child.parentId);
+            }
+        }
+        if (topParents.length >= topK) break;
+    }
+
+    console.log(`[Semantic Search] Retrieved ${topParents.length} unique parent contexts`);
+    return topParents;
 }
