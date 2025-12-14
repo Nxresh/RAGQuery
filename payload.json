@@ -1,0 +1,7 @@
+{
+    "action": "rag",
+    "payload": {
+        "documentContent": "This is a test document.",
+        "query": "What is this?"
+    }
+}

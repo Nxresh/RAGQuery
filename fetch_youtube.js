@@ -151,29 +151,36 @@ async function tryCustomScraper(videoId) {
     try {
         // Strategy 1: Library
         try {
+            console.error('[DEBUG] Trying youtube-transcript library...');
             const result = await tryLibrary(videoId);
-            console.log(JSON.stringify(result));
-            return;
+            if (result && result.length > 0) {
+                console.log(JSON.stringify(result));
+                return;
+            } else {
+                console.error('[DEBUG] Library returned empty result');
+            }
         } catch (e) {
-            // console.error(e.message);
+            console.error(`[DEBUG] Library error: ${e.message}`);
         }
 
         // Strategy 2: Invidious
         try {
+            console.error('[DEBUG] Trying Invidious...');
             const result = await tryInvidious(videoId);
             console.log(JSON.stringify(result));
             return;
         } catch (e) {
-            // console.error(e.message);
+            console.error(`[DEBUG] Invidious error: ${e.message}`);
         }
 
         // Strategy 3: Custom Scraper
         try {
+            console.error('[DEBUG] Trying custom scraper...');
             const result = await tryCustomScraper(videoId);
             console.log(JSON.stringify(result));
             return;
         } catch (e) {
-            // console.error(e.message);
+            console.error(`[DEBUG] Custom scraper error: ${e.message}`);
         }
 
         throw new Error('All strategies failed. No transcript available.');

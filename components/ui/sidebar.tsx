@@ -21,7 +21,7 @@ export function SidebarProvider({
     children: React.ReactNode
     style?: React.CSSProperties
 }) {
-    const [open, setOpen] = useState(true)
+    const [open, setOpen] = useState(false) // Start collapsed by default
 
     return (
         <SidebarContext.Provider

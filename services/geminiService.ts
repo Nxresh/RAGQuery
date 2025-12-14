@@ -14,11 +14,14 @@ export interface AresChatResponse {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function postJson<T>(path: string, body: unknown, userId?: string): Promise<T> {
 	console.log(`[Service] POST ${API_BASE_URL}${path}`, body);
+	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (userId) headers['X-User-Id'] = userId;
+
 	const res = await fetch(`${API_BASE_URL}${path}`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers,
 		body: JSON.stringify(body),
 	});
 	console.log(`[Service] Response status: ${res.status}`);
@@ -61,11 +64,10 @@ export async function performRAG(documentContent: string, query: string): Promis
 
 export async function scrapeContentFromURL(url: string): Promise<string> {
 	try {
-		const result = await postJson<{ content: string }>('/proxy', {
+		return (await postJson<{ content: string }>('/proxy', {
 			action: 'scrape',
 			payload: { url },
-		});
-		return result.content;
+		})).content;
 	} catch (error) {
 		console.error('Error scraping URL:', error);
 		throw error;
@@ -73,17 +75,21 @@ export async function scrapeContentFromURL(url: string): Promise<string> {
 }
 
 
-export async function saveDocument(title: string, content: string, type: 'text' | 'url'): Promise<{ id: number }> {
-	return await postJson<{ id: number }>('/documents', { title, content, type });
+export async function saveDocument(title: string, content: string, type: 'text' | 'url', userId?: string): Promise<{ id: number }> {
+	return await postJson<{ id: number }>('/documents', { title, content, type }, userId);
 }
 
-export async function uploadFile(file: File): Promise<{ id: number; content: string; title: string }> {
+export async function uploadFile(file: File, userId?: string): Promise<{ id: number; content: string; title: string }> {
 	const formData = new FormData();
 	formData.append('file', file);
+
+	const headers: Record<string, string> = {};
+	if (userId) headers['X-User-Id'] = userId;
 
 	console.log(`[Service] Uploading file: ${file.name}`);
 	const res = await fetch(`${API_BASE_URL}/upload`, {
 		method: 'POST',
+		headers,
 		body: formData, // fetch automatically sets Content-Type to multipart/form-data
 	});
 
@@ -95,9 +101,12 @@ export async function uploadFile(file: File): Promise<{ id: number; content: str
 	return await res.json();
 }
 
-export async function getDocuments(): Promise<{ documents: StoredDocument[] }> {
+export async function getDocuments(userId?: string): Promise<{ documents: StoredDocument[] }> {
 	try {
-		const res = await fetch(`${API_BASE_URL}/documents`);
+		const headers: Record<string, string> = {};
+		if (userId) headers['X-User-Id'] = userId;
+
+		const res = await fetch(`${API_BASE_URL}/documents`, { headers });
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 		return await res.json();
 	} catch (error) {
@@ -106,9 +115,15 @@ export async function getDocuments(): Promise<{ documents: StoredDocument[] }> {
 	}
 }
 
-export async function deleteDocument(id: number): Promise<void> {
+export async function deleteDocument(id: number, userId?: string): Promise<void> {
 	try {
-		const res = await fetch(`${API_BASE_URL}/documents/${id}`, { method: 'DELETE' });
+		const headers: Record<string, string> = {};
+		if (userId) headers['X-User-Id'] = userId;
+
+		const res = await fetch(`${API_BASE_URL}/documents/${id}`, {
+			method: 'DELETE',
+			headers
+		});
 		if (!res.ok) throw new Error(`HTTP ${res.status}`);
 	} catch (error) {
 		console.error('Error deleting document:', error);

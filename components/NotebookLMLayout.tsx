@@ -10,11 +10,13 @@ import { LibraryModal } from './LibraryModal';
 import { User } from 'firebase/auth';
 import './ChatStyles.css';
 import { StudioLayout } from './Studio/StudioLayout';
-import { LayoutDashboard, MessageSquare, Home, Archive, Settings, User as UserIcon } from 'lucide-react';
+import { AgentsLayout } from './Agents/AgentsLayout';
+import { LayoutDashboard, MessageSquare, Home, Archive, Settings, User as UserIcon, Bot } from 'lucide-react';
 import { QueryBar } from './QueryInput/QueryBar';
 import AnimatedNavBar from './Dock/AnimatedNavBar';
 import { Button } from './ui/button';
 import { CollapsedSidebarTrigger } from './CollapsedSidebarTrigger';
+import { addToHistory } from './HistoryPanel';
 
 interface Source {
     id: number;
@@ -57,7 +59,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // View State
-    const [activeView, setActiveView] = useState<'chat' | 'studio'>('chat');
+    const [activeView, setActiveView] = useState<'chat' | 'studio' | 'agents'>('chat');
 
     // Projects & Search State
     const [projects, setProjects] = useState<Project[]>([]);
@@ -303,6 +305,9 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
             timestamp: new Date()
         }]);
 
+        // Save to history
+        addToHistory('ares_chat_history', query);
+
         try {
             const selectedSourcesData = sources.filter(s => selectedSources.includes(s.id));
             const combinedContent = selectedSourcesData.map(s => s.content).join('\n\n');
@@ -462,6 +467,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                         onRenameProject={handleRenameProject}
                         onDeleteProject={handleDeleteProject}
                         onOpenLibrary={() => setIsLibraryOpen(true)}
+                        onHistorySelect={(query) => setCurrentQuery(query)}
                     >
                         <div className="mb-4">
                             <h2 className="text-xs font-medium text-neutral-500 mb-2 px-2 uppercase tracking-wider">Sources</h2>
@@ -496,6 +502,13 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                                 icon: <LayoutDashboard size={16} />,
                                                 onClick: () => setActiveView('studio'),
                                                 isActive: activeView === 'studio'
+                                            },
+                                            {
+                                                id: 'agents',
+                                                label: 'Agents',
+                                                icon: <Bot size={16} />,
+                                                onClick: () => setActiveView('agents'),
+                                                isActive: activeView === 'agents'
                                             }
                                         ]}
                                         magnification={1.1}
@@ -548,6 +561,13 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                     selectedSources={selectedSources}
                                     onFileUpload={handleFileUpload}
                                     isProcessing={isProcessing}
+                                />
+                            </div>
+                        ) : activeView === 'agents' ? (
+                            <div className="flex-1 overflow-hidden">
+                                <AgentsLayout
+                                    sources={sources}
+                                    selectedSources={selectedSources}
                                 />
                             </div>
                         ) : (
@@ -648,6 +668,27 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                             </button>
                                         </div>
                                     )}
+
+                                    {/* Quick Suggestions */}
+                                    {selectedSources.length > 0 && conversations.length === 0 && (
+                                        <div className="mb-3 flex flex-wrap gap-2 justify-center">
+                                            {[
+                                                "Summarize the key points",
+                                                "What are the main topics?",
+                                                "Explain the main concept",
+                                                "List all important details"
+                                            ].map((suggestion, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setCurrentQuery(suggestion)}
+                                                    className="px-4 py-2 text-sm bg-white/5 hover:bg-orange-500/20 border border-white/10 hover:border-orange-500/30 rounded-full text-neutral-300 hover:text-orange-400 transition-all duration-200"
+                                                >
+                                                    {suggestion}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     <QueryBar
                                         onSubmit={handleQuery}
                                         onFileUpload={handleFileUpload}
@@ -664,7 +705,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                             }
                                         }}
                                         isLoading={isQuerying || isProcessing}
-                                        disabled={isQuerying || isProcessing}
+                                        disabled={isQuerying || isProcessing || selectedSources.length === 0}
                                         value={currentQuery}
                                         onChange={setCurrentQuery}
                                     />

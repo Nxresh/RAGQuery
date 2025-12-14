@@ -58,16 +58,52 @@ app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
-// Check for API key
-if (!process.env.API_KEY) {
-  console.error('ERROR: API_KEY environment variable is not set.');
+// Check for OpenRouter API key (preferred) or Google API key (fallback)
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const GOOGLE_API_KEY = process.env.API_KEY;
+
+if (!OPENROUTER_API_KEY && !GOOGLE_API_KEY) {
+  console.error('ERROR: No API key found. Set OPENROUTER_API_KEY or API_KEY in .env');
   process.exit(1);
 }
 
-// Initialize GenAI with the correct SDK
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-// Use gemini-2.0-flash (User has access to this specific model)
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+// Determine which provider to use
+const USE_OPENROUTER = !!OPENROUTER_API_KEY;
+console.log(`🤖 Using AI Provider: ${USE_OPENROUTER ? 'OpenRouter' : 'Google Gemini'}`);
+
+// OpenRouter API call function
+async function callOpenRouter(prompt) {
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'http://localhost:5173',
+      'X-Title': 'RAGQuery App'
+    },
+    body: JSON.stringify({
+      model: 'openai/gpt-3.5-turbo', // Reliable model (very cheap)
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 2000
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || 'No response generated';
+}
+
+// Google Gemini fallback (if OpenRouter not available)
+let genAI, model;
+if (!USE_OPENROUTER) {
+  const { GoogleGenerativeAI } = await import('@google/generative-ai');
+  genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+  model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+}
 
 // Helper to repair truncated JSON
 function repairJSON(jsonStr) {
@@ -106,39 +142,80 @@ function repairJSON(jsonStr) {
   }
 }
 
-// Initialize embeddings for semantic search
+// Initialize embeddings for semantic search (only if Google API key is available)
 import { initEmbeddings } from './semanticSearch.js';
-initEmbeddings(process.env.API_KEY);
-console.log('✅ Semantic search initialized');
+if (GOOGLE_API_KEY) {
+  initEmbeddings(GOOGLE_API_KEY);
+  console.log('✅ Semantic search initialized');
+} else {
+  console.log('⚠️ Semantic search disabled (no Google API key for embeddings)');
+}
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Helper to call the model with retries
-async function generateWithRetries(prompt, maxAttempts = 8) {
+// Helper to call the model with retries
+async function generateWithRetries(prompt, maxAttempts = 5) {
   let attempt = 0;
-  console.log(`[API] generateWithRetries called. Prompt length: ${prompt.length}`);
+  const fs = require('fs');
+  const logFile = 'api_debug_error.log';
+
+  const log = (msg) => {
+    console.log(msg);
+    try {
+      fs.appendFileSync(logFile, `${new Date().toISOString()} - ${msg}\n`);
+    } catch (e) { /* ignore file write errors */ }
+  };
+
+  log(`[API] generateWithRetries called. Prompt length: ${prompt.length}`);
+
   while (true) {
     try {
-      console.log(`[API] Attempt ${attempt + 1}/${maxAttempts} starting...`);
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      console.log(`[API] Attempt ${attempt + 1} success.`);
-      return response.text();
+      log(`[API] Attempt ${attempt + 1}/${maxAttempts} starting...`);
+
+      let responseText;
+      if (USE_OPENROUTER) {
+        // Use OpenRouter
+        responseText = await callOpenRouter(prompt);
+      } else {
+        // Use Google Gemini
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        responseText = response.text();
+      }
+
+      log(`[API] Attempt ${attempt + 1} success.`);
+      return responseText;
     } catch (err) {
       attempt += 1;
-      const isLast = attempt >= maxAttempts;
       const isRateLimit = err.message?.includes('429') || err.status === 429;
 
-      console.warn(`[API] Model call failed (attempt ${attempt}/${maxAttempts}):`, err?.message || err);
+      log(`[API] Model call failed (attempt ${attempt}/${maxAttempts}): ${err?.message || err}`);
 
+      const isLast = attempt >= maxAttempts;
       if (isLast) throw err;
 
-      // Aggressive Exponential backoff for rate limits
-      // 10s, 20s, 40s, 80s...
-      const baseDelay = isRateLimit ? 10000 : 2000;
-      const delay = baseDelay * Math.pow(2, attempt - 1);
+      let delay = 2000 * Math.pow(2, attempt - 1); // Default backoff
 
-      console.log(`[API] Waiting ${delay}ms before retry...`);
+      // Smart Retry: Extract retryDelay from error message if available
+      if (isRateLimit) {
+        // Check for JSON format: "retryDelay":"38s"
+        let match = err.message?.match(/retryDelay":"([\d\.]+)s"/);
+        // Check for text format: "Please retry in 30.226s"
+        if (!match) match = err.message?.match(/Please retry in ([\d\.]+)s/);
+
+        if (match && match[1]) {
+          const serverWait = parseFloat(match[1]) * 1000;
+          log(`[API] Rate Limit detected. Server requested wait: ${serverWait}ms`);
+          // Add a small buffer (2s) to be safe
+          delay = serverWait + 2000;
+        } else {
+          // Fallback if we can't parse it but know it's a rate limit
+          delay = 10000 * attempt;
+        }
+      }
+
+      log(`[API] Waiting ${delay}ms before retry...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -163,8 +240,8 @@ app.post('/api/proxy', async (req, res) => {
       try {
         // Use semantic search with embeddings for better relevance
         const { semanticSearch } = await import('./semanticSearch.js');
-        // Retrieve top 5 Parent Contexts (Hierarchical RAG)
-        const topChunks = await semanticSearch(documentContent, query, 5);
+        // Retrieve top 3 Parent Contexts (Hierarchical RAG) to save tokens
+        const topChunks = await semanticSearch(documentContent, query, 3);
 
         console.log('[RAG] Semantic search complete');
         console.log('[RAG] Top Parent Contexts count:', topChunks.length);
@@ -229,10 +306,35 @@ ${topChunksText}
           chunkText: c.text
         }));
 
-        return res.status(200).json({
-          synthesizedAnswer: `Found ${topChunks.length} relevant passages, but failed to generate summary.`,
-          rankedChunks: topChunks
-        });
+        // Fallback: Generate synthesis using keyword-matched chunks
+        console.log('[RAG] Fallback: Attempting synthesis with keyword chunks...');
+        const fallbackContext = topChunks.map((c, i) => `
+---
+### Context Section ${i + 1} (Relevance: ${c.relevanceScore}%)
+${c.chunkText}
+---
+`).join('\n');
+
+        const fallbackPrompt = `You are an expert AI assistant. Answer the question based on the context provided.
+
+**Context:**
+${fallbackContext}
+
+**Question:** ${query}
+
+**Answer:**`;
+
+        try {
+          const fallbackAnswer = await generateWithRetries(fallbackPrompt);
+          console.log('[RAG] Fallback synthesis successful');
+          return res.status(200).json({ synthesizedAnswer: fallbackAnswer, rankedChunks: topChunks });
+        } catch (fallbackErr) {
+          console.error('[RAG] Fallback synthesis also failed:', fallbackErr.message);
+          return res.status(200).json({
+            synthesizedAnswer: `Found ${topChunks.length} relevant passages, but failed to generate summary due to API rate limits. Please wait a moment and try again.`,
+            rankedChunks: topChunks
+          });
+        }
       }
     }
 
@@ -392,6 +494,417 @@ app.post('/api/process/youtube', async (req, res) => {
     }
 
     res.status(500).json({ error: `Failed to process YouTube video: ${err.message}` });
+  }
+});
+
+// ============================================================
+// AGENTS - MCP YouTube Agent Endpoint
+// ============================================================
+app.post('/api/agents/youtube', async (req, res) => {
+  try {
+    const { videoUrl, query } = req.body;
+
+    if (!videoUrl) {
+      return res.status(400).json({ error: 'Missing videoUrl' });
+    }
+    if (!query) {
+      return res.status(400).json({ error: 'Missing query' });
+    }
+
+    console.log('[YouTube Agent] Processing:', { videoUrl, query });
+
+    // Extract Video ID
+    let videoId = null;
+    try {
+      const urlObj = new URL(videoUrl);
+      if (urlObj.hostname.includes('youtube.com')) {
+        videoId = urlObj.searchParams.get('v');
+      } else if (urlObj.hostname.includes('youtu.be')) {
+        videoId = urlObj.pathname.slice(1);
+      }
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    if (!videoId) {
+      return res.status(400).json({ error: 'Invalid YouTube URL' });
+    }
+
+    console.log('[YouTube Agent] Video ID:', videoId);
+
+    // Step 1: Fetch Transcript via Docker MCP
+    console.log('[YouTube Agent] Fetching transcript via Docker MCP...');
+    let transcript = '';
+    try {
+      transcript = await new Promise((resolve, reject) => {
+        const { spawn } = require('child_process');
+
+        const docker = spawn('docker', ['run', '-i', '--rm', 'mcp/youtube-transcript'], {
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        docker.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        docker.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        docker.on('error', (err) => {
+          reject(new Error(`Docker error: ${err.message}`));
+        });
+
+        docker.on('close', (code) => {
+          console.log('[MCP] Response received, parsing...');
+
+          try {
+            // Parse JSON-RPC responses line by line
+            const lines = stdout.trim().split('\n');
+            for (const line of lines) {
+              try {
+                const response = JSON.parse(line);
+                if (response.result && response.result.content) {
+                  const textContent = response.result.content.find(c => c.type === 'text');
+                  if (textContent && textContent.text) {
+                    resolve(textContent.text);
+                    return;
+                  }
+                }
+              } catch (e) { /* continue */ }
+            }
+            reject(new Error('No transcript in MCP response'));
+          } catch (err) {
+            reject(new Error(`Parse error: ${err.message}`));
+          }
+        });
+
+        // MCP Initialize
+        const initReq = JSON.stringify({
+          jsonrpc: '2.0', id: 0, method: 'initialize',
+          params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'RAGQuery', version: '1.0.0' } }
+        });
+
+        // MCP Get Transcript
+        const transcriptReq = JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'get_transcript', arguments: { url: videoUrl } }
+        });
+
+        docker.stdin.write(initReq + '\n');
+        setTimeout(() => {
+          docker.stdin.write(transcriptReq + '\n');
+          docker.stdin.end();
+        }, 300);
+
+        // Timeout
+        setTimeout(() => { docker.kill(); reject(new Error('Timeout')); }, 30000);
+      });
+
+      console.log('[YouTube Agent] Transcript length:', transcript.length);
+    } catch (err) {
+      console.error('[YouTube Agent] MCP failed:', err.message);
+      return res.status(400).json({
+        error: `Could not fetch transcript: ${err.message}`
+      });
+    }
+
+    // Step 2: Process Query with AI
+    console.log('[YouTube Agent] Processing query with AI...');
+    const agentPrompt = `You are an expert YouTube video analyst providing comprehensive, detailed answers. You have access to a video transcript and must answer the user's question.
+
+**VIDEO TRANSCRIPT:**
+${transcript.substring(0, 15000)} ${transcript.length > 15000 ? '... [transcript truncated for length]' : ''}
+
+**USER'S QUESTION:**
+${query}
+
+**IMPORTANT FORMATTING INSTRUCTIONS:**
+1. **Use Proper Headings:**
+   - Use **# (H1)** for the main title
+   - Use **## (H2)** for major sections
+   - Use **### (H3)** for subsections
+
+2. **Structure Your Response:**
+   - Start with a brief **Overview** or **Summary** section
+   - Break down the content into **logical sections**
+   - Use **numbered lists (1., 2., 3.)** for steps or key points
+   - Use **bullet points (-)** for details within sections
+
+3. **Highlight Key Information:**
+   - Use **bold** for important terms and concepts
+   - Use *italics* for emphasis or quotes from the video
+   - Include relevant **timestamps** if available in the transcript
+
+4. **Be Comprehensive:**
+   - Provide detailed explanations, not just brief summaries
+   - Include examples or quotes from the transcript
+   - If the user asks for a summary, provide a thorough breakdown
+   - Cover all relevant aspects of the question
+
+5. **Professional Quality:**
+   - Write as if creating a professional document or article
+   - Ensure the response is well-organized and easy to follow
+   - Aim for depth and clarity
+
+**YOUR DETAILED RESPONSE:**`;
+
+    let aiResponse;
+    try {
+      aiResponse = await generateWithRetries(agentPrompt);
+      console.log('[YouTube Agent] AI response generated');
+    } catch (err) {
+      console.error('[YouTube Agent] AI processing failed:', err.message);
+      return res.status(500).json({
+        error: 'Failed to process your query. Please try again.',
+        transcript: transcript.substring(0, 500) + '...'
+      });
+    }
+
+    // Return successful response
+    res.status(200).json({
+      videoId,
+      transcript: transcript.substring(0, 1000) + (transcript.length > 1000 ? '...' : ''),
+      transcriptLength: transcript.length,
+      query,
+      answer: aiResponse
+    });
+
+  } catch (err) {
+    console.error('[YouTube Agent] Error:', err);
+    res.status(500).json({ error: `Agent error: ${err.message}` });
+  }
+});
+
+// ============================================================
+// AGENTS - Confluence SOP Agent Endpoints
+// ============================================================
+
+// Confluence Environment Variables
+const CONFLUENCE_URL = process.env.CONFLUENCE_URL;
+const CONFLUENCE_USERNAME = process.env.CONFLUENCE_USERNAME;
+const CONFLUENCE_API_TOKEN = process.env.CONFLUENCE_API_TOKEN || process.env.CONFLUENCE_PERSONAL_TOKEN;
+
+// Endpoint 1: Generate SOP from knowledge input
+app.post('/api/agents/confluence/generate', async (req, res) => {
+  try {
+    const { knowledge, title } = req.body;
+
+    if (!knowledge || knowledge.trim().length < 10) {
+      return res.status(400).json({ error: 'Please provide knowledge input (at least 10 characters)' });
+    }
+
+    console.log('[Confluence Agent] Generating SOP from knowledge:', knowledge.substring(0, 100) + '...');
+
+    const sopPrompt = `You are an expert technical writer specializing in creating detailed Standard Operating Procedures (SOPs).
+
+**USER'S KNOWLEDGE INPUT:**
+${knowledge}
+
+**YOUR TASK:**
+Create a comprehensive, professional SOP document based on the user's input. The SOP should be:
+- Clear and actionable
+- Well-structured with proper headings
+- Detailed enough for someone new to follow
+
+**FORMAT (use this exact structure):**
+
+# ${title || '[Generate an appropriate title based on content]'}
+
+## Purpose
+[Brief description of what this SOP covers and why it exists]
+
+## Scope
+[Who this applies to, what systems/processes are involved]
+
+## Prerequisites
+[Required knowledge, access, tools, or permissions needed before starting]
+
+## Procedure
+
+### Step 1: [First Major Action]
+[Detailed instructions]
+- Sub-step details if needed
+- Include specific commands, paths, or values
+
+### Step 2: [Second Major Action]
+[Detailed instructions]
+
+### Step 3: [Continue as needed]
+[Add more steps as required by the content]
+
+## Verification
+[How to verify the procedure was completed successfully]
+
+## Troubleshooting
+| Issue | Possible Cause | Solution |
+|-------|---------------|----------|
+| [Issue 1] | [Cause] | [Solution] |
+| [Issue 2] | [Cause] | [Solution] |
+
+## Related Documents
+- [List any related SOPs, documentation, or resources]
+
+---
+*Generated by ARES Enterprise Intelligence*
+
+**GENERATE THE SOP NOW:**`;
+
+    let sopContent;
+    try {
+      sopContent = await generateWithRetries(sopPrompt);
+      console.log('[Confluence Agent] SOP generated successfully, length:', sopContent.length);
+    } catch (err) {
+      console.error('[Confluence Agent] SOP generation failed:', err.message);
+      return res.status(500).json({ error: 'Failed to generate SOP. Please try again.' });
+    }
+
+    // Extract suggested title from generated content
+    const titleMatch = sopContent.match(/^# (.+)$/m);
+    const suggestedTitle = titleMatch ? titleMatch[1].trim() : title || 'Untitled SOP';
+
+    res.status(200).json({
+      sopContent,
+      suggestedTitle,
+      inputLength: knowledge.length
+    });
+
+  } catch (err) {
+    console.error('[Confluence Agent] Error:', err);
+    res.status(500).json({ error: `Generation error: ${err.message}` });
+  }
+});
+
+// Endpoint 2: Publish to Confluence via MCP
+app.post('/api/agents/confluence/publish', async (req, res) => {
+  try {
+    const { title, content, spaceKey, parentPageId, action, pageId } = req.body;
+
+    if (!title || !content || !spaceKey) {
+      return res.status(400).json({ error: 'Missing required fields: title, content, spaceKey' });
+    }
+
+    if (!CONFLUENCE_URL || !CONFLUENCE_USERNAME || !CONFLUENCE_API_TOKEN) {
+      return res.status(400).json({
+        error: 'Confluence credentials not configured. Please add CONFLUENCE_URL, CONFLUENCE_USERNAME, and CONFLUENCE_API_TOKEN to your .env file.'
+      });
+    }
+
+    console.log('[Confluence Agent] Publishing to Confluence:', { title, spaceKey, action });
+
+    // Call Atlassian MCP Docker server
+    const publishResult = await new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+
+      const docker = spawn('docker', [
+        'run', '-i', '--rm',
+        '-e', `CONFLUENCE_URL=${CONFLUENCE_URL}`,
+        '-e', `CONFLUENCE_USERNAME=${CONFLUENCE_USERNAME}`,
+        '-e', `CONFLUENCE_API_TOKEN=${CONFLUENCE_API_TOKEN}`,
+        'mcp/atlassian'
+      ], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+      let stdout = '';
+      let stderr = '';
+
+      docker.stdout.on('data', (data) => { stdout += data.toString(); });
+      docker.stderr.on('data', (data) => { stderr += data.toString(); });
+
+      docker.on('error', (err) => {
+        reject(new Error(`Docker error: ${err.message}`));
+      });
+
+      docker.on('close', (code) => {
+        console.log('[MCP Confluence] Response:', stdout.substring(0, 500));
+
+        try {
+          const lines = stdout.trim().split('\n');
+          for (const line of lines) {
+            try {
+              const response = JSON.parse(line);
+              if (response.result) {
+                resolve(response.result);
+                return;
+              }
+              if (response.error) {
+                reject(new Error(response.error.message || 'MCP error'));
+                return;
+              }
+            } catch (e) { /* continue */ }
+          }
+          reject(new Error('No valid response from MCP'));
+        } catch (err) {
+          reject(new Error(`Parse error: ${err.message}`));
+        }
+      });
+
+      // MCP Initialize
+      const initReq = JSON.stringify({
+        jsonrpc: '2.0', id: 0, method: 'initialize',
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'RAGQuery', version: '1.0.0' } }
+      });
+
+      // MCP Create/Update Page
+      const toolName = action === 'update' ? 'confluence_update_page' : 'confluence_create_page';
+      const toolArgs = action === 'update'
+        ? { page_id: pageId, title, content }
+        : { space_key: spaceKey, title, content, parent_page_id: parentPageId };
+
+      const pageReq = JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name: toolName, arguments: toolArgs }
+      });
+
+      docker.stdin.write(initReq + '\n');
+      setTimeout(() => {
+        docker.stdin.write(pageReq + '\n');
+        docker.stdin.end();
+      }, 500);
+
+      // Timeout
+      setTimeout(() => { docker.kill(); reject(new Error('Timeout')); }, 60000);
+    });
+
+    console.log('[Confluence Agent] Published successfully');
+
+    res.status(200).json({
+      success: true,
+      message: action === 'update' ? 'Page updated successfully' : 'Page created successfully',
+      result: publishResult,
+      pageUrl: `${CONFLUENCE_URL}/wiki/spaces/${spaceKey}/pages`
+    });
+
+  } catch (err) {
+    console.error('[Confluence Agent] Publish error:', err);
+    res.status(500).json({ error: `Publish failed: ${err.message}` });
+  }
+});
+
+// Endpoint 3: Get Confluence spaces (for dropdown)
+app.get('/api/agents/confluence/spaces', async (req, res) => {
+  try {
+    if (!CONFLUENCE_URL || !CONFLUENCE_USERNAME || !CONFLUENCE_API_TOKEN) {
+      return res.status(400).json({
+        error: 'Confluence credentials not configured',
+        configured: false
+      });
+    }
+
+    // For now, return a placeholder - in production, call MCP to list spaces
+    res.status(200).json({
+      configured: true,
+      spaces: [
+        { key: 'DOCS', name: 'Documentation' },
+        { key: 'TEAM', name: 'Team Space' },
+        { key: 'KB', name: 'Knowledge Base' }
+      ]
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

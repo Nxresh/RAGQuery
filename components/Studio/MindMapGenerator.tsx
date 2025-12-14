@@ -18,6 +18,7 @@ import 'reactflow/dist/style.css';
 import { Sparkles, Loader2, ZoomIn, ZoomOut, Maximize, Network } from 'lucide-react';
 import { StudioDropZone } from './StudioDropZone';
 import { MindMapNode } from './MindMapNode';
+import { addToHistory } from '../HistoryPanel';
 
 const nodeTypes = {
     mindmap: MindMapNode,
@@ -255,6 +256,9 @@ export const MindMapGenerator = ({ sources, onFileUpload, isProcessing }: { sour
             const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(newNodes, newEdges);
             setNodes(layoutedNodes);
             setEdges(layoutedEdges);
+
+            // Save to history
+            addToHistory('ares_studio_history', topic, 'Mind Map');
 
         } catch (err: any) {
             console.error(err);
