@@ -1,6 +1,18 @@
 import dotenv from 'dotenv';
 // dotenv.config({ path: '.env.local' });
 dotenv.config();
+
+// Sentry for monitoring (only if DSN is configured)
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.2, // 20% of transactions for performance monitoring
+    integrations: [],
+  });
+  console.log('📊 Sentry monitoring initialized');
+}
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -13,9 +25,12 @@ const pdf = require('pdf-parse');
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { exec } from 'child_process';
 import util from 'util';
+import { parsePDFWithMetadata, parseDocxWithMetadata, parseTextWithMetadata, generateVersionId } from './services/pdfParser.js';
+import { logQuery, extractCitations } from './services/auditLogger.js';
+import { expandQuery, decomposeQuery, generateHypotheticalAnswer, stepBackQuery, analyzeQueryComplexity, transformQuery } from './services/queryTransformer.js';
 const execPromise = util.promisify(exec);
 const app = express();
-const PORT = 5190;
+const PORT = process.env.PORT || 5190;
 
 // Initialize PostgreSQL Connection Pool
 const pool = new pg.Pool({
@@ -39,23 +54,435 @@ async function testDbConnection() {
 }
 testDbConnection();
 
+// CORS configuration
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: corsOrigin.split(','), // Allows multiple origins via comma-separated list
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Limit payload size
 app.use(cookieParser());
 
-// Security headers
+// ============================================================
+// ENTERPRISE SECURITY MIDDLEWARE
+// ============================================================
+
+// Rate limiting for sensitive endpoints
+const requestCounts = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS = 100; // requests per window
+
+const rateLimiter = (req, res, next) => {
+  const ip = req.ip || req.connection.remoteAddress;
+  const now = Date.now();
+
+  if (!requestCounts.has(ip)) {
+    requestCounts.set(ip, { count: 1, startTime: now });
+    return next();
+  }
+
+  const record = requestCounts.get(ip);
+  if (now - record.startTime > RATE_LIMIT_WINDOW) {
+    // Reset window
+    requestCounts.set(ip, { count: 1, startTime: now });
+    return next();
+  }
+
+  record.count++;
+  if (record.count > MAX_REQUESTS) {
+    console.log(`[Security] Rate limit exceeded for IP: ${ip}`);
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+  }
+
+  next();
+};
+
+// Apply rate limiting to all API routes
+app.use('/api/', rateLimiter);
+
+// Enhanced security headers
 app.use((req, res, next) => {
+  // Prevent XSS attacks
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  // Prevent clickjacking
+  res.setHeader('X-Frame-Options', 'DENY');
+  // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;");
+  // HSTS - enforce HTTPS
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // Referrer policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Permissions policy
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Content Security Policy
+  res.setHeader('Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; " +
+    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; " +
+    "img-src 'self' data: blob: https:; " +
+    "connect-src 'self' https://openrouter.ai https://generativelanguage.googleapis.com https://*.atlassian.net;"
+  );
   next();
 });
 
+// ============================================================
+// JWT AUTHENTICATION SECURITY
+// ============================================================
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'ares-enterprise-jwt-secret-change-in-production';
+const JWT_EXPIRES_IN = '7d';
+
+// Generate JWT token
+function generateToken(userId, email) {
+  return jwt.sign(
+    { userId, email, iat: Date.now() },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES_IN }
+  );
+}
+
+// JWT Authentication Middleware
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  // Check for Bearer token
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (err) {
+        console.log('[JWT] Token verification failed:', err.message);
+        return res.status(403).json({ error: 'Invalid or expired token' });
+      }
+      req.user = decoded;
+      next();
+    });
+  }
+  // Fallback to X-User-Id header for backward compatibility
+  else if (req.headers['x-user-id']) {
+    req.user = { userId: req.headers['x-user-id'] };
+    next();
+  }
+  else {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+}
+
+// Optional JWT check (doesn't fail if no token, just sets req.user if valid)
+function optionalJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+      if (!err) req.user = decoded;
+      next();
+    });
+  } else if (req.headers['x-user-id']) {
+    req.user = { userId: req.headers['x-user-id'] };
+    next();
+  } else {
+    next();
+  }
+}
+
+// Input sanitization helper
+function sanitizeInput(input) {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+\s*=/gi, '') // Remove event handlers
+    .replace(/[<>]/g, (c) => c === '<' ? '&lt;' : '&gt;'); // Escape angle brackets
+}
+
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({ status: 'ok', security: 'enterprise-jwt' });
+});
+
+// ============================================================
+// JWT TOKEN ENDPOINTS
+// ============================================================
+
+// Exchange Firebase UID for backend JWT (Hybrid Auth)
+app.post('/api/auth/token', async (req, res) => {
+  try {
+    const { uid, email } = req.body;
+
+    if (!uid || !email) {
+      return res.status(400).json({ error: 'Missing uid or email' });
+    }
+
+    // Verify user exists in our database
+    const { rows } = await pool.query(
+      'SELECT * FROM user_details WHERE firebase_uid = $1',
+      [uid]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found. Please sign up first.' });
+    }
+
+    // Generate JWT token
+    const token = generateToken(uid, email);
+
+    console.log('[JWT] Token issued for user:', email);
+
+    res.json({
+      token,
+      expiresIn: JWT_EXPIRES_IN,
+      user: {
+        id: rows[0].id,
+        email: rows[0].email,
+        firstName: rows[0].first_name,
+        lastName: rows[0].last_name
+      }
+    });
+  } catch (err) {
+    console.error('[JWT] Token generation error:', err);
+    res.status(500).json({ error: 'Failed to generate token' });
+  }
+});
+
+// Verify JWT token (for frontend validation)
+app.get('/api/auth/verify', authenticateJWT, (req, res) => {
+  res.json({ valid: true, user: req.user });
+});
+
+// Refresh JWT token
+app.post('/api/auth/refresh', authenticateJWT, (req, res) => {
+  try {
+    const newToken = generateToken(req.user.userId, req.user.email);
+    res.json({ token: newToken, expiresIn: JWT_EXPIRES_IN });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to refresh token' });
+  }
+});
+
+// ============================================================
+// SMART AI-POWERED QUERY SUGGESTIONS
+// ============================================================
+
+// Generate intelligent query suggestions based on source content
+app.post('/api/suggestions', async (req, res) => {
+  try {
+    const { sourceIds, userId, featureType, featureContext } = req.body;
+
+    if (!sourceIds || sourceIds.length === 0) {
+      // Feature-specific fallback suggestions when no sources are selected
+      let fallbackSuggestions;
+      if (featureType === 'studio') {
+        if (featureContext?.includes('mind map')) {
+          fallbackSuggestions = ["Brainstorm project ideas", "Map out a strategy", "Visualize key concepts", "Create topic overview"];
+        } else if (featureContext?.includes('infographic')) {
+          fallbackSuggestions = ["Show key statistics", "Create a timeline", "Compare options visually", "Visualize data trends"];
+        } else if (featureContext?.includes('slide')) {
+          fallbackSuggestions = ["Outline a pitch deck", "Create intro slides", "Build presentation structure", "Summarize key points"];
+        } else if (featureContext?.includes('report')) {
+          fallbackSuggestions = ["Create executive summary", "Draft detailed analysis", "Build comprehensive report", "Compile key findings"];
+        } else {
+          fallbackSuggestions = ["Generate visual content", "Create presentation", "Build infographic", "Design mind map"];
+        }
+      } else if (featureType === 'agents') {
+        if (featureContext?.includes('YouTube')) {
+          fallbackSuggestions = ["Summarize this video", "Extract key points", "List main topics", "Find actionable insights"];
+        } else if (featureContext?.includes('Confluence')) {
+          fallbackSuggestions = ["Generate SOP document", "Create knowledge article", "Draft how-to guide", "Build documentation"];
+        } else {
+          fallbackSuggestions = ["Analyze content", "Generate documentation", "Extract insights", "Create summary"];
+        }
+      } else {
+        fallbackSuggestions = [
+          "What are the key points in this document?",
+          "Summarize the main topics",
+          "What are the most important details?",
+          "Explain the core concepts"
+        ];
+      }
+      return res.json({ suggestions: fallbackSuggestions });
+    }
+
+    // Get content from selected sources (first 3000 chars of each, max 3 sources)
+    const limitedIds = sourceIds.slice(0, 3);
+    console.log('[Suggestions] Querying DB for sourceIds:', limitedIds, 'userId:', userId);
+    const { rows } = await pool.query(
+      `SELECT title, SUBSTRING(content, 1, 3000) as content FROM documents 
+       WHERE id = ANY($1) AND (user_id = $2 OR user_id IS NULL)`,
+      [limitedIds, userId || 'anonymous']
+    );
+    console.log('[Suggestions] DB returned', rows.length, 'rows');
+
+    if (rows.length === 0) {
+      // Same feature-specific fallback when no documents found
+      console.log('[Suggestions] No documents found, using fallback for featureType:', featureType);
+      let fallbackSuggestions;
+      if (featureType === 'studio') {
+        fallbackSuggestions = ["Generate visual content", "Create presentation", "Build infographic", "Design mind map"];
+      } else if (featureType === 'agents') {
+        fallbackSuggestions = ["Analyze content", "Generate documentation", "Extract insights", "Create summary"];
+      } else {
+        fallbackSuggestions = ["What are the key points?", "Summarize this content", "What are the main themes?", "List important details"];
+      }
+      return res.json({ suggestions: fallbackSuggestions });
+    }
+
+    // Combine source content for analysis
+    const combinedContent = rows.map(r => `[${r.title}]: ${r.content}`).join('\n\n');
+
+    // Define sources for the prompt
+    const sources = rows.map(r => ({ title: r.title, content: r.content }));
+    const contentPreview = combinedContent;
+
+    // Use AI to generate smart suggestions
+    let suggestionPrompt;
+    if (sources.length > 0) {
+      // Determine the output format based on feature type
+      let outputInstructions;
+      if (featureType === 'studio') {
+        if (featureContext?.includes('mind map')) {
+          outputInstructions = `Generate 4 TOPIC INPUTS for a Mind Map generator based on the document content.
+These should be topics/concepts the user would type to create a mind map visualization.
+Examples: "AI Evolution and Branches", "Machine Learning Fundamentals", "Neural Network Architecture"
+Format: Short noun phrases (2-5 words) representing concepts to map visually.`;
+        } else if (featureContext?.includes('infographic')) {
+          outputInstructions = `Generate 4 TOPIC INPUTS for an Infographic generator based on the document content.
+These should be data-focused topics the user would type to create visual data representations.
+Examples: "AI Adoption Statistics 2024", "ML vs DL Comparison", "Industry AI Use Cases"
+Format: Short phrases that would work as infographic titles with data potential.`;
+        } else if (featureContext?.includes('slide')) {
+          outputInstructions = `Generate 4 TOPIC INPUTS for a Slide Deck generator based on the document content.
+These should be presentation topics the user would type to create slides.
+Examples: "Introduction to Machine Learning", "AI Ethics Overview", "Deep Learning Applications"
+Format: Presentation title style (3-6 words).`;
+        } else if (featureContext?.includes('report')) {
+          outputInstructions = `Generate 4 TOPIC INPUTS for a Report generator based on the document content.
+These should be report topics the user would type to create detailed documentation.
+Examples: "Comprehensive AI Analysis", "Machine Learning Implementation Guide", "AI Trends Report"
+Format: Report title style (3-6 words).`;
+        } else {
+          outputInstructions = `Generate 4 TOPIC INPUTS for content generation based on the documents.
+Format: Short topic phrases (2-5 words).`;
+        }
+      } else if (featureType === 'agents') {
+        if (featureContext?.includes('YouTube')) {
+          outputInstructions = `Generate 4 QUERY INPUTS for a YouTube video analysis agent.
+These are questions/requests the user would ask about a video transcript.
+Examples: "Summarize the main points", "List all tools mentioned", "What are the key takeaways?"
+Format: Action-oriented questions/requests about video content.`;
+        } else if (featureContext?.includes('Confluence')) {
+          outputInstructions = `Generate 4 INSTRUCTION INPUTS for a Confluence documentation agent.
+These are instructions the user would give to generate documentation.
+Examples: "Create SOP for deployment process", "Draft technical specification", "Generate how-to guide"
+Format: Documentation creation instructions.`;
+        } else {
+          outputInstructions = `Generate 4 QUERY INPUTS for an agent based on the documents.
+Format: Action-oriented requests.`;
+        }
+      } else {
+        // Chat - generate analytical questions
+        outputInstructions = `Generate 4 ANALYTICAL QUESTIONS about the document content.
+These are questions the user would ask to explore and understand the content.
+Examples: "What are the key points?", "Compare X and Y", "Explain the main concept"
+Format: Thoughtful questions that encourage deep analysis.`;
+      }
+
+      // Check if multiple sources are selected
+      const isMultiSource = sources.length > 1;
+      const multiSourceContext = isMultiSource
+        ? `\nIMPORTANT: Multiple documents (${sources.length}) are selected. Focus on:
+- COMMON THEMES shared across all documents
+- CROSS-DOCUMENT comparisons and connections  
+- SEMANTIC OVERLAP and shared concepts
+- Questions that synthesize information from multiple sources`
+        : '';
+
+      suggestionPrompt = `You are an AI assistant helping users generate content from their documents.
+
+DOCUMENTS (${sources.length}):
+${sources.map(s => `- "${s.title}"`).join('\n')}
+
+CONTENT PREVIEW:
+${contentPreview.substring(0, 800)}
+${multiSourceContext}
+
+TASK:
+${outputInstructions}
+
+RULES:
+- Base suggestions on ACTUAL CONTENT from the documents
+${isMultiSource ? '- Focus on COMMON THEMES and SHARED CONCEPTS across all documents' : '- Each suggestion must be UNIQUE and SPECIFIC to the content'}
+${isMultiSource ? '- Suggestions should encourage CROSS-DOCUMENT ANALYSIS' : ''}
+- Keep each suggestion under 8 words
+- Return EXACTLY 4 suggestions as a JSON array: ["suggestion1", "suggestion2", "suggestion3", "suggestion4"]
+`;
+    } else {
+      // No content - Suggest generic but feature-specific actions
+      suggestionPrompt = `
+You are an expert AI assistant.
+Generate 4 feature-specific suggestions for the "${featureContext || 'General'}" feature.
+No documents are selected, so suggest general templates or starting points.
+
+Examples:
+- Mind Map: "Brainstorm project ideas", "Map out a marketing strategy"
+- YouTube: "Analyze this video URL", "Find key topics in video"
+
+Output strictly as a JSON array of strings.
+`;
+    }
+
+    let suggestions = [
+      "What are the key points?",
+      "Summarize the main topics",
+      "Explain the core concepts",
+      "List important details"
+    ];
+
+    try {
+      // Call AI for smart suggestions
+      if (USE_OPENROUTER) {
+        const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'http://localhost:5173'
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.0-flash-001',
+            messages: [{ role: 'user', content: suggestionPrompt }],
+            max_tokens: 300
+          })
+        });
+
+        if (aiResponse.ok) {
+          const data = await aiResponse.json();
+          const content = data.choices?.[0]?.message?.content || '';
+
+          // Parse JSON array from response
+          const match = content.match(/\[[\s\S]*\]/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            if (Array.isArray(parsed) && parsed.length >= 4) {
+              suggestions = parsed.slice(0, 4);
+              console.log('[Suggestions] AI generated:', suggestions);
+            }
+          }
+        }
+      }
+    } catch (aiErr) {
+      console.error('[Suggestions] AI error, using defaults:', aiErr.message);
+    }
+
+    res.json({ suggestions });
+
+  } catch (err) {
+    console.error('[Suggestions] Error:', err);
+    res.status(500).json({ error: 'Failed to generate suggestions' });
+  }
 });
 
 // Check for OpenRouter API key (preferred) or Google API key (fallback)
@@ -82,9 +509,9 @@ async function callOpenRouter(prompt) {
       'X-Title': 'RAGQuery App'
     },
     body: JSON.stringify({
-      model: 'openai/gpt-3.5-turbo', // Reliable model (very cheap)
+      model: 'qwen/qwen-2.5-7b-instruct', // Very cheap: ~$0.0001/1K tokens
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000
+      max_tokens: 4000
     })
   });
 
@@ -102,7 +529,7 @@ let genAI, model;
 if (!USE_OPENROUTER) {
   const { GoogleGenerativeAI } = await import('@google/generative-ai');
   genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-  model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+  model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // Fastest model
 }
 
 // Helper to repair truncated JSON
@@ -230,29 +657,104 @@ app.post('/api/proxy', async (req, res) => {
     if (!action) return res.status(400).json({ error: 'Missing action' });
 
     if (action === 'rag') {
-      const { documentContent, query } = payload;
+      const { documentContent, query, documentIds, userId, enableAdvancedTransforms } = payload;
       if (!documentContent || !query) return res.status(400).json({ error: 'Missing documentContent or query' });
 
+      const startTime = Date.now();
       console.log('[RAG] Starting semantic search...');
       console.log('[RAG] Document length:', documentContent.length, 'characters');
-      console.log('[RAG] Query:', query);
+      console.log('[RAG] Original Query:', query);
 
       try {
-        // Use semantic search with embeddings for better relevance
+        // Analyze query complexity for intelligent transformation
+        const complexity = analyzeQueryComplexity(query);
+        console.log('[RAG] Query analysis:', JSON.stringify(complexity.suggestedTransforms));
+
+        // Apply query transformation based on complexity
+        let searchQuery = query;
+        let transformationUsed = 'none';
+        let subQuestions = null;
+        let hypotheticalAnswer = null;
+
+        // Always expand vague queries
+        if (complexity.isVague || complexity.suggestedTransforms.expansion) {
+          try {
+            searchQuery = await expandQuery(query, generateWithRetries);
+            transformationUsed = 'expansion';
+          } catch (e) {
+            console.log('[RAG] Query expansion failed, using original');
+          }
+        }
+
+        // For complex multi-part questions, decompose into sub-questions
+        if (enableAdvancedTransforms && complexity.suggestedTransforms.decomposition) {
+          try {
+            subQuestions = await decomposeQuery(query, generateWithRetries);
+            if (subQuestions.length > 1) {
+              transformationUsed = 'decomposition';
+              console.log('[RAG] Decomposed into', subQuestions.length, 'sub-questions');
+            }
+          } catch (e) {
+            console.log('[RAG] Decomposition failed');
+          }
+        }
+
+        // For non-technical questions, use HyDE (opt-in due to cost)
+        if (enableAdvancedTransforms && complexity.suggestedTransforms.hyde) {
+          try {
+            hypotheticalAnswer = await generateHypotheticalAnswer(query, generateWithRetries);
+            transformationUsed = 'hyde';
+          } catch (e) {
+            console.log('[RAG] HyDE failed');
+          }
+        }
+
+        console.log('[RAG] Transformation used:', transformationUsed);
+        console.log('[RAG] Search query:', searchQuery.substring(0, 100) + '...');
+
+        // Use semantic search with the transformed query
         const { semanticSearch } = await import('./semanticSearch.js');
-        // Retrieve top 3 Parent Contexts (Hierarchical RAG) to save tokens
-        const topChunks = await semanticSearch(documentContent, query, 3);
+
+        // Use hypothetical answer for search if HyDE was applied
+        const queryForSearch = hypotheticalAnswer || searchQuery;
+        const topChunks = await semanticSearch(documentContent, queryForSearch, 3);
+
+        // If sub-questions exist, optionally run additional searches
+        let additionalContext = '';
+        if (subQuestions && subQuestions.length > 1) {
+          console.log('[RAG] Running searches for sub-questions...');
+          for (const subQ of subQuestions.slice(1, 3)) { // Limit to 2 additional
+            const subChunks = await semanticSearch(documentContent, subQ, 1);
+            if (subChunks.length > 0) {
+              additionalContext += `\n\n### Additional Context for: "${subQ}"\n${subChunks[0].chunkText}`;
+            }
+          }
+        }
 
         console.log('[RAG] Semantic search complete');
         console.log('[RAG] Top Parent Contexts count:', topChunks.length);
         console.log('[RAG] Top relevance scores:', topChunks.map(c => c.relevanceScore + '%').join(', '));
 
+        // Enhanced context with source indexing for citations
         const topChunksText = topChunks.map((c, i) => `
 ---
-### Context Section ${i + 1} (Relevance: ${c.relevanceScore}%)
+### [Source ${i + 1}]${c.pageNumber ? ` (Page ${c.pageNumber})` : ''}${c.sectionId ? ` §${c.sectionId}` : ''} - Relevance: ${c.relevanceScore}%
 ${c.chunkText}
 ---
 `).join('\n');
+
+        // Check if multiple sources are involved
+        const uniqueSourceCount = new Set(topChunks.map(c => c.documentId || c.documentTitle)).size;
+        const isMultiSource = uniqueSourceCount > 1;
+
+        const multiSourceInstructions = isMultiSource ? `
+5. **MULTI-SOURCE SYNTHESIS (CRITICAL - ${uniqueSourceCount} sources detected)**:
+   - You MUST use information from ALL ${uniqueSourceCount} sources in your answer
+   - COMPARE and CONTRAST information across different sources
+   - IDENTIFY common themes, agreements, or contradictions between sources
+   - SYNTHESIZE insights by combining information from multiple sources
+   - DO NOT just answer from one source - integrate ALL sources
+   - If sources have different perspectives, present both with citations` : '';
 
         const synthesisPrompt = `You are an expert AI assistant tasked with answering questions based on provided context.
 
@@ -262,25 +764,61 @@ ${c.chunkText}
    - Use **H2 (##)** for major sections.
    - Use **Numbered Lists (1., 2., 3.)** for steps or key points.
    - **Bold Keys**: Start list items with a bold key if applicable (e.g., **Key:** Value).
-   - **Do NOT use bold text inline** within sentences unless it's a key term.
-2. **Detail**: Provide a **detailed, comprehensive explanation**. Explain *why* and *how*.
-3. **Structure**:
+2. **INLINE CITATIONS (CRITICAL)**:
+   - When citing information from the sources, use this format: **[Source X, p.Y]** or **[Source X]**
+   - Example: "The policy requires annual reviews [Source 1, p.5]"
+   - Every factual claim MUST have a citation to the relevant source
+   - Use the source number from the context sections below
+3. **Detail**: Provide a **detailed, comprehensive explanation**. Explain *why* and *how*.
+4. **Structure**:
    - Start with a clear **H1 Title**.
    - Break down the answer into clear **H2 Sections**.
-   - Use **Numbered Lists** for processes or itemized details.
+   - Use **Numbered Lists** for processes or itemized details.${multiSourceInstructions}
 
-**Context Sections from the document (Hierarchical Retrieval):**
+**Context Sections from the documents (Hierarchical Retrieval):**
 ${topChunksText}
 
 **User's Query:** ${query}
 
-**Your Answer:**`;
+**Your Answer (with inline citations from ALL sources):**`;
 
-        console.log('[RAG] Generating synthesis...');
+        console.log('[RAG] Generating synthesis with citations...');
         const synthesizedAnswer = await generateWithRetries(synthesisPrompt);
         console.log('[RAG] Synthesis successful');
         console.log('[RAG] Answer preview:', synthesizedAnswer.substring(0, 100) + '...');
-        return res.status(200).json({ synthesizedAnswer, rankedChunks: topChunks });
+
+        // Calculate latency
+        const latencyMs = Date.now() - startTime;
+
+        // Enrich chunks with metadata for frontend
+        const enrichedChunks = topChunks.map((c, idx) => ({
+          ...c,
+          sourceIndex: idx + 1,
+          documentId: c.documentId || null,
+          documentTitle: c.documentTitle || null,
+          pageNumber: c.pageNumber || null,
+          sectionId: c.sectionId || null
+        }));
+
+        // Log to audit trail (async, don't wait)
+        if (userId) {
+          logQuery(pool, {
+            userId,
+            queryText: query,
+            retrievedChunkIds: enrichedChunks.map(c => c.chunkId).filter(Boolean),
+            chunksFedToModel: enrichedChunks.map(c => c.chunkId).filter(Boolean),
+            citedChunkIds: [], // Would need to parse response for citations
+            modelResponse: synthesizedAnswer,
+            documentIds: documentIds || [],
+            latencyMs
+          }).catch(err => console.error('[Audit] Failed:', err.message));
+        }
+
+        return res.status(200).json({
+          synthesizedAnswer,
+          rankedChunks: enrichedChunks,
+          latencyMs
+        });
       } catch (err) {
         console.error('[RAG] Semantic search error:', err);
         console.error('[RAG] Falling back to keyword search...');
@@ -301,28 +839,30 @@ ${topChunksText}
           return { text: chunk.trim(), score: Math.min(100, score), index: idx };
         });
 
-        const topChunks = scoredChunks.sort((a, b) => b.score - a.score).slice(0, 5).map(c => ({
+        const topChunks = scoredChunks.sort((a, b) => b.score - a.score).slice(0, 5).map((c, idx) => ({
           relevanceScore: c.score,
-          chunkText: c.text
+          chunkText: c.text,
+          sourceIndex: idx + 1
         }));
 
         // Fallback: Generate synthesis using keyword-matched chunks
         console.log('[RAG] Fallback: Attempting synthesis with keyword chunks...');
         const fallbackContext = topChunks.map((c, i) => `
 ---
-### Context Section ${i + 1} (Relevance: ${c.relevanceScore}%)
+### [Source ${i + 1}] - Relevance: ${c.relevanceScore}%
 ${c.chunkText}
 ---
 `).join('\n');
 
         const fallbackPrompt = `You are an expert AI assistant. Answer the question based on the context provided.
+Use inline citations like [Source 1] when referencing information.
 
 **Context:**
 ${fallbackContext}
 
 **Question:** ${query}
 
-**Answer:**`;
+**Answer (with inline citations):**`;
 
         try {
           const fallbackAnswer = await generateWithRetries(fallbackPrompt);
@@ -494,6 +1034,140 @@ app.post('/api/process/youtube', async (req, res) => {
     }
 
     res.status(500).json({ error: `Failed to process YouTube video: ${err.message}` });
+  }
+});
+
+// ============================================================
+// IMAGE PROCESSING - OCR + Person Recognition + Scene Analysis
+// ============================================================
+app.post('/api/process/image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image uploaded' });
+    }
+
+    console.log(`[Image] Processing: ${req.file.originalname} (${req.file.mimetype})`);
+
+    // Convert image to base64
+    const imageBase64 = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+
+    const analysisPrompt = `Analyze this image and describe what you see in a natural, flowing way.
+
+Your description should include:
+1. Any text visible in the image (preserve document structure if applicable)
+2. If there are people: describe their appearance, and if they appear to be a celebrity or public figure, mention who they might be naturally (e.g., "The image shows Elon Musk standing at a podium...")
+3. The setting, environment, and any notable objects or landmarks
+4. The overall context and mood of the image
+
+Write your response as a cohesive description, NOT with section headers. Make it read naturally like you're describing the image to someone. Be thorough but conversational.`;
+
+    let extractedText;
+
+    if (USE_OPENROUTER) {
+      // Use OpenRouter with a vision-capable model
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:5173',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-001',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${mimeType};base64,${imageBase64}`
+                  }
+                },
+                {
+                  type: 'text',
+                  text: analysisPrompt
+                }
+              ]
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'OpenRouter vision call failed');
+      }
+
+      const data = await response.json();
+      extractedText = data.choices[0]?.message?.content || 'No analysis generated';
+    } else {
+      // Use Google Gemini SDK
+      const visionModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await visionModel.generateContent([
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: imageBase64
+          }
+        },
+        analysisPrompt
+      ]);
+      extractedText = result.response.text();
+    }
+
+    console.log('[Image] Analysis complete, length:', extractedText.length);
+    res.json({ text: extractedText, filename: req.file.originalname });
+
+  } catch (err) {
+    console.error('[Image] Error:', err);
+    res.status(500).json({ error: `Image processing failed: ${err.message}` });
+  }
+});
+
+// ============================================================
+// AUDIO PROCESSING - Transcription
+// ============================================================
+app.post('/api/process/audio', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No audio uploaded' });
+    }
+
+    console.log(`[Audio] Processing: ${req.file.originalname} (${req.file.mimetype})`);
+
+    // For audio, we'll use a text prompt to describe what we need
+    // Note: OpenRouter/Gemini audio support may be limited
+    const audioBase64 = req.file.buffer.toString('base64');
+    const mimeType = req.file.mimetype;
+
+    let transcript;
+
+    if (!USE_OPENROUTER && genAI) {
+      // Use Google Gemini SDK for audio (has better audio support)
+      const audioModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await audioModel.generateContent([
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: audioBase64
+          }
+        },
+        "Transcribe this audio recording. Return the full transcript text only."
+      ]);
+      transcript = result.response.text();
+    } else {
+      // Fallback: inform user that audio transcription requires Google API
+      transcript = "Audio transcription is currently only supported with Google Gemini API. Please configure API_KEY in your .env file.";
+    }
+
+    console.log('[Audio] Transcribed, length:', transcript.length);
+    res.json({ transcript, filename: req.file.originalname });
+
+  } catch (err) {
+    console.error('[Audio] Error:', err);
+    res.status(500).json({ error: `Audio processing failed: ${err.message}` });
   }
 });
 
@@ -778,103 +1452,102 @@ Create a comprehensive, professional SOP document based on the user's input. The
   }
 });
 
-// Endpoint 2: Publish to Confluence via MCP
+// Endpoint 2: Publish to Confluence via REST API (User-provided credentials)
 app.post('/api/agents/confluence/publish', async (req, res) => {
   try {
-    const { title, content, spaceKey, parentPageId, action, pageId } = req.body;
+    const {
+      title,
+      content,
+      spaceKey,
+      parentPageId,
+      // User-provided Confluence credentials
+      confluenceUrl,
+      confluenceEmail,
+      confluenceToken,
+      action,
+      pageId
+    } = req.body;
 
     if (!title || !content || !spaceKey) {
       return res.status(400).json({ error: 'Missing required fields: title, content, spaceKey' });
     }
 
-    if (!CONFLUENCE_URL || !CONFLUENCE_USERNAME || !CONFLUENCE_API_TOKEN) {
+    // Use user-provided credentials or fallback to env variables
+    const CONF_URL = confluenceUrl || process.env.CONFLUENCE_URL;
+    const CONF_EMAIL = confluenceEmail || process.env.CONFLUENCE_USERNAME;
+    const CONF_TOKEN = confluenceToken || process.env.CONFLUENCE_API_TOKEN || process.env.CONFLUENCE_PERSONAL_TOKEN;
+
+    if (!CONF_URL || !CONF_EMAIL || !CONF_TOKEN) {
       return res.status(400).json({
-        error: 'Confluence credentials not configured. Please add CONFLUENCE_URL, CONFLUENCE_USERNAME, and CONFLUENCE_API_TOKEN to your .env file.'
+        error: 'Confluence credentials not provided. Please configure URL, Email, and API Token in the settings.'
       });
     }
 
-    console.log('[Confluence Agent] Publishing to Confluence:', { title, spaceKey, action });
+    console.log('[Confluence Agent] Publishing to Confluence:', { title, spaceKey, url: CONF_URL });
 
-    // Call Atlassian MCP Docker server
-    const publishResult = await new Promise((resolve, reject) => {
-      const { spawn } = require('child_process');
+    // Convert markdown to Confluence storage format
+    const confluenceContent = content
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br/>');
 
-      const docker = spawn('docker', [
-        'run', '-i', '--rm',
-        '-e', `CONFLUENCE_URL=${CONFLUENCE_URL}`,
-        '-e', `CONFLUENCE_USERNAME=${CONFLUENCE_USERNAME}`,
-        '-e', `CONFLUENCE_API_TOKEN=${CONFLUENCE_API_TOKEN}`,
-        'mcp/atlassian'
-      ], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const storageContent = `<p>${confluenceContent}</p>`;
 
-      let stdout = '';
-      let stderr = '';
+    // Create page via Confluence REST API
+    const apiUrl = `${CONF_URL}/wiki/rest/api/content`;
+    const auth = Buffer.from(`${CONF_EMAIL}:${CONF_TOKEN}`).toString('base64');
 
-      docker.stdout.on('data', (data) => { stdout += data.toString(); });
-      docker.stderr.on('data', (data) => { stderr += data.toString(); });
-
-      docker.on('error', (err) => {
-        reject(new Error(`Docker error: ${err.message}`));
-      });
-
-      docker.on('close', (code) => {
-        console.log('[MCP Confluence] Response:', stdout.substring(0, 500));
-
-        try {
-          const lines = stdout.trim().split('\n');
-          for (const line of lines) {
-            try {
-              const response = JSON.parse(line);
-              if (response.result) {
-                resolve(response.result);
-                return;
-              }
-              if (response.error) {
-                reject(new Error(response.error.message || 'MCP error'));
-                return;
-              }
-            } catch (e) { /* continue */ }
-          }
-          reject(new Error('No valid response from MCP'));
-        } catch (err) {
-          reject(new Error(`Parse error: ${err.message}`));
+    const requestBody = {
+      type: 'page',
+      title: title,
+      space: { key: spaceKey },
+      body: {
+        storage: {
+          value: storageContent,
+          representation: 'storage'
         }
-      });
+      }
+    };
 
-      // MCP Initialize
-      const initReq = JSON.stringify({
-        jsonrpc: '2.0', id: 0, method: 'initialize',
-        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'RAGQuery', version: '1.0.0' } }
-      });
+    // Add parent page if provided
+    if (parentPageId) {
+      requestBody.ancestors = [{ id: parentPageId }];
+      console.log('[Confluence Agent] Creating page under parent:', parentPageId);
+    }
 
-      // MCP Create/Update Page
-      const toolName = action === 'update' ? 'confluence_update_page' : 'confluence_create_page';
-      const toolArgs = action === 'update'
-        ? { page_id: pageId, title, content }
-        : { space_key: spaceKey, title, content, parent_page_id: parentPageId };
-
-      const pageReq = JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'tools/call',
-        params: { name: toolName, arguments: toolArgs }
-      });
-
-      docker.stdin.write(initReq + '\n');
-      setTimeout(() => {
-        docker.stdin.write(pageReq + '\n');
-        docker.stdin.end();
-      }, 500);
-
-      // Timeout
-      setTimeout(() => { docker.kill(); reject(new Error('Timeout')); }, 60000);
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     });
 
-    console.log('[Confluence Agent] Published successfully');
+    const responseData = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error('[Confluence Agent] API Error:', responseData);
+      throw new Error(responseData.message || `Confluence API error: ${response.status}`);
+    }
+
+    const pageUrl = `${CONF_URL}/wiki${responseData._links?.webui || `/spaces/${spaceKey}/pages/${responseData.id}`}`;
+
+    console.log('[Confluence Agent] Published successfully:', pageUrl);
 
     res.status(200).json({
       success: true,
-      message: action === 'update' ? 'Page updated successfully' : 'Page created successfully',
-      result: publishResult,
-      pageUrl: `${CONFLUENCE_URL}/wiki/spaces/${spaceKey}/pages`
+      message: 'Page created successfully',
+      pageId: responseData.id,
+      pageUrl: pageUrl,
+      title: responseData.title
     });
 
   } catch (err) {
@@ -893,10 +1566,11 @@ app.get('/api/agents/confluence/spaces', async (req, res) => {
       });
     }
 
-    // For now, return a placeholder - in production, call MCP to list spaces
+    // Return offersl2 space plus placeholders
     res.status(200).json({
       configured: true,
       spaces: [
+        { key: 'offersl2', name: 'Offers L2 SOP' },
         { key: 'DOCS', name: 'Documentation' },
         { key: 'TEAM', name: 'Team Space' },
         { key: 'KB', name: 'Knowledge Base' }
@@ -949,7 +1623,7 @@ app.post('/api/auth/sync', async (req, res) => {
   }
 });
 
-// Upload Endpoint
+// Upload Endpoint (Enhanced with provenance tracking)
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
@@ -957,38 +1631,92 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    let content = '';
     const mimeType = req.file.mimetype;
     const title = req.file.originalname;
+    const versionId = generateVersionId();
 
     console.log(`[Upload] Processing: ${title} (${mimeType}) for user: ${userId}`);
 
+    let parseResult;
+    let docType = 'file';
+
     try {
       if (mimeType === 'application/pdf') {
-        const data = await pdf(req.file.buffer);
-        content = data.text;
+        parseResult = await parsePDFWithMetadata(req.file.buffer);
+        docType = 'pdf';
+        console.log(`[Upload] PDF parsed: ${parseResult.pageCount} pages, ${parseResult.chunks.length} chunks`);
       } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
-        content = result.value;
+        parseResult = await parseDocxWithMetadata(req.file.buffer);
+        docType = 'docx';
       } else {
-        content = req.file.buffer.toString('utf-8');
+        const textContent = req.file.buffer.toString('utf-8');
+        parseResult = parseTextWithMetadata(textContent, title);
+        docType = 'text';
       }
     } catch (parseError) {
       console.error('[Upload] Parse error:', parseError);
       return res.status(500).json({ error: `Failed to parse file: ${parseError.message}` });
     }
 
-    if (!content || content.trim().length === 0) {
+    if (!parseResult.content || parseResult.content.trim().length === 0) {
       return res.status(400).json({ error: 'File empty or unparseable' });
     }
 
     try {
-      const { rows } = await pool.query(
-        'INSERT INTO documents (title, content, type, user_id) VALUES ($1, $2, $3, $4) RETURNING id',
-        [title, content, 'file', userId]
+      // Insert document with enhanced metadata
+      const { rows: docRows } = await pool.query(
+        `INSERT INTO documents 
+         (title, content, type, user_id, version_id, file_hash, page_count, metadata) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+         RETURNING id`,
+        [
+          title,
+          parseResult.content,
+          docType,
+          userId,
+          versionId,
+          parseResult.fileHash,
+          parseResult.pageCount,
+          JSON.stringify(parseResult.metadata || {})
+        ]
       );
-      console.log(`[Upload] Saved ID: ${rows[0].id}`);
-      res.json({ id: rows[0].id, content, title });
+
+      const documentId = docRows[0].id;
+      console.log(`[Upload] Document saved ID: ${documentId}`);
+
+      // Store chunks with provenance metadata
+      if (parseResult.chunks && parseResult.chunks.length > 0) {
+        const chunkPromises = parseResult.chunks.map(chunk =>
+          pool.query(
+            `INSERT INTO document_chunks 
+             (document_id, chunk_index, chunk_text, page_number, section_id, start_char, end_char, bounding_box)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id`,
+            [
+              documentId,
+              chunk.chunkIndex,
+              chunk.chunkText,
+              chunk.pageNumber,
+              chunk.sectionId,
+              chunk.startChar,
+              chunk.endChar,
+              chunk.boundingBox ? JSON.stringify(chunk.boundingBox) : null
+            ]
+          )
+        );
+
+        await Promise.all(chunkPromises);
+        console.log(`[Upload] Stored ${parseResult.chunks.length} chunks with page metadata`);
+      }
+
+      res.json({
+        id: documentId,
+        content: parseResult.content,
+        title,
+        pageCount: parseResult.pageCount,
+        chunkCount: parseResult.chunks?.length || 0,
+        versionId
+      });
     } catch (err) {
       console.error('[Upload] DB Error:', err);
       res.status(500).json({ error: err.message });
@@ -1017,13 +1745,16 @@ app.post('/api/documents', async (req, res) => {
   const userId = req.headers['x-user-id'];
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { title, content, type, isStarred } = req.body;
+  const { title, content, type, isStarred, thumbnail } = req.body;
   if (!title || !content) return res.status(400).json({ error: 'Missing title/content' });
 
   try {
+    // Store thumbnail in metadata JSON if provided
+    const metadata = thumbnail ? JSON.stringify({ thumbnail }) : null;
+
     const { rows } = await pool.query(
-      'INSERT INTO documents (title, content, type, user_id, is_starred) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [title, content, type || 'text', userId, isStarred || false]
+      'INSERT INTO documents (title, content, type, user_id, is_starred, metadata) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [title, content, type || 'text', userId, isStarred || false, metadata]
     );
     res.json({ id: rows[0].id });
   } catch (err) {
@@ -1040,6 +1771,27 @@ app.delete('/api/documents/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM documents WHERE id = $1 AND user_id = $2', [id, userId]);
     res.json({ message: 'Document deleted' });
+  } catch (err) {
+    console.error('[Documents] Error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rename document
+app.put('/api/documents/:id', async (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  const { title } = req.body;
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: 'Missing title' });
+  }
+
+  try {
+    await pool.query('UPDATE documents SET title = $1 WHERE id = $2 AND user_id = $3', [title.trim(), id, userId]);
+    res.json({ message: 'Document renamed', id, title: title.trim() });
   } catch (err) {
     console.error('[Documents] Error:', err);
     res.status(500).json({ error: err.message });
@@ -1193,30 +1945,66 @@ app.post('/api/generate-mindmap', async (req, res) => {
     const topContexts = await semanticSearch(context, topic, 10);
     const contextText = topContexts.map(c => c.chunkText).join('\n\n');
 
-    const prompt = `Generate a comprehensive hierarchical mindmap for the topic: "${topic}".
+    const prompt = `Generate a DEEPLY NESTED hierarchical mindmap for: "${topic}".
     
-    IMPORTANT: Use the following context to generate the mindmap.
-    
-    Context:
+    Context to use:
     ${contextText || 'No specific context provided.'}
     
-    Output strictly valid JSON with this recursive structure:
+    Output strictly valid JSON. EVERY branch must go AT LEAST 4-5 levels deep:
     {
-      "label": "Main Topic",
-      "details": "Brief description or key insight",
+      "label": "Main Topic (Level 0)",
+      "details": "Overview of the main topic",
       "children": [
         {
-          "label": "Subtopic 1",
-          "details": "Detailed explanation or answer for this subtopic. DO NOT create a child node for the answer. Put the answer text HERE.",
-          "children": [ ... ]
+          "label": "Category A (Level 1)",
+          "details": "Description of this category",
+          "children": [
+            {
+              "label": "Aspect A.1 (Level 2)",
+              "details": "Details about this aspect",
+              "children": [
+                {
+                  "label": "Point A.1.1 (Level 3)",
+                  "details": "Specific point explanation",
+                  "children": [
+                    {
+                      "label": "Detail A.1.1.1 (Level 4)",
+                      "details": "Fine-grained detail",
+                      "children": [
+                        {
+                          "label": "Example A.1.1.1.1 (Level 5)",
+                          "details": "Concrete example or final detail"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
         }
       ]
     }
     
-    CRITICAL RULES:
-    1. "details": This field MUST contain the explanation, answer, or description for the node.
-    2. "children": Use this ONLY for actual subtopics or branches. DO NOT create a child node just to hold text.
-    3. Ensure the structure is deep enough (at least 3 levels) to cover the topic thoroughly.`;
+    MANDATORY REQUIREMENTS:
+    1. **MINIMUM 5 LEVELS DEEP**: Every main branch MUST have children going down to level 4 or 5.
+    2. **NO SHALLOW BRANCHES**: If a node at level 2 or 3 has no children, ADD children to make it deeper.
+    3. **STRUCTURE**:
+       - Level 0: Main Topic (1 node)
+       - Level 1: Main Categories (3-5 nodes)
+       - Level 2: Sub-categories (2-4 per parent)
+       - Level 3: Specific Points (2-3 per parent)
+       - Level 4: Details/Examples (2-3 per parent)
+       - Level 5: Fine Details (1-2 per parent if applicable)
+    4. **"details" MUST BE VERY DETAILED**:
+       - Write 4-6 sentences for EACH node
+       - Explain WHAT it is, WHY it matters, HOW it works
+       - Include specific examples, statistics, or use cases where relevant
+       - Make it comprehensive enough that someone can learn just from reading the details
+       - DO NOT use vague descriptions like "Description of..." - provide REAL, SUBSTANTIVE content
+    5. **"children"**: MUST be an array. Even leaf nodes should have this as empty array [].
+    
+    GENERATE THE DEEPEST POSSIBLE MINDMAP for "${topic}". DO NOT STOP AT LEVEL 3.`;
 
     const responseText = await generateWithRetries(prompt);
     console.log('[Mindmap] Raw response:', responseText);
@@ -1638,6 +2426,28 @@ app.post('/api/regenerate-visual', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 Server running on port ${PORT} `);
+// ============================================================
+// PRODUCTION: Serve Static Frontend
+// ============================================================
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files from the dist directory (Vite build output)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Handle client-side routing - serve index.html for all non-API routes
+app.get('*', (req, res) => {
+  // Don't interfere with API routes
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API endpoint not found' });
+  }
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
+
+app.listen(PORT, () => {
+  console.log(`\n🚀 Server running on port ${PORT}`);
+  console.log(`📂 Serving static files from: ${path.join(__dirname, 'dist')}`);
+});
+
