@@ -1,7 +1,9 @@
 # Nixpacks configuration for Railway deployment
+# Force Node.js as the primary provider (not Python)
 
 [phases.setup]
-nixPkgs = ["nodejs_20", "python311"]
+nixPkgs = ["nodejs_20"]
+aptPkgs = ["python3", "python3-pip"]
 
 [phases.install]
 cmds = ["npm install"]
