@@ -89,7 +89,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: var(--bg-dark);
+    background: transparent; /* Changed from bg-dark to allow particles to show */
     height: 100%;
     overflow: hidden;
     position: relative;

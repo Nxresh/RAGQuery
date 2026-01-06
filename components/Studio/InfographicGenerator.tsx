@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Sparkles, Loader2, Activity, Users, TrendingUp, DollarSign, BarChart as BarChartIcon, Download, Share2, Maximize, ZoomOut, Info, RefreshCw } from 'lucide-react';
 
 import { StudioDropZone } from './StudioDropZone';
+import { addToHistory } from '../HistoryPanel';
 
 const COLORS = ['#f97316', '#fb923c', '#fdba74', '#333333', '#4b5563'];
 
@@ -61,12 +62,33 @@ const CustomTooltip = ({ active, payload, label, unit }: any) => {
     return null;
 };
 
-export const InfographicGenerator = ({ sources, onFileUpload, isProcessing }: { sources: any[], onFileUpload: (file: File, type: string) => void, isProcessing: boolean }) => {
+export const InfographicGenerator = ({ sources, onFileUpload, isProcessing, initialTopic, restoredContent, onClearRestored }: {
+    sources: any[],
+    onFileUpload: (file: File, type: string) => void,
+    isProcessing: boolean,
+    initialTopic?: string,
+    restoredContent?: any,
+    onClearRestored?: () => void
+}) => {
     const [topic, setTopic] = useState('');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any>(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (initialTopic) setTopic(initialTopic);
+    }, [initialTopic]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent && restoredContent.data) {
+            console.log('[Infographic] Restoring content:', restoredContent);
+            setData(restoredContent.data);
+            if (restoredContent.topic) setTopic(restoredContent.topic);
+            if (onClearRestored) setTimeout(onClearRestored, 100);
+        }
+    }, [restoredContent, onClearRestored]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -99,6 +121,14 @@ export const InfographicGenerator = ({ sources, onFileUpload, isProcessing }: { 
             });
             const result = await res.json();
             setData(result);
+
+            // Save to history
+            const historyItems = addToHistory('ares_studio_history', topic, 'Infographic');
+            const historyId = historyItems[0].id;
+            localStorage.setItem(`ares_studio_${historyId}`, JSON.stringify({
+                content: { data: result, topic },
+                tab: 'infographic'
+            }));
         } catch (err) {
             console.error(err);
         } finally {

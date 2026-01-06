@@ -52,7 +52,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
             const [firstName, ...lastNameParts] = displayName.split(' ');
             const lastName = lastNameParts.join(' ');
 
-            await fetch('http://localhost:3000/api/auth/sync', {
+            await fetch('/api/auth/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -62,6 +62,23 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
                     lastName: lastName || ''
                 })
             });
+
+            // 🔐 Get backend JWT token for secure API access
+            const tokenResponse = await fetch('/api/auth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userCredential.user.uid,
+                    email: userCredential.user.email
+                })
+            });
+
+            if (tokenResponse.ok) {
+                const { token } = await tokenResponse.json();
+                // Store JWT securely (will be picked up by API requests)
+                localStorage.setItem('auth_token', token);
+                console.log('[Auth] JWT token obtained and stored');
+            }
 
         } catch (err: any) {
             setError(err.message || 'Login failed');
@@ -86,7 +103,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
             });
 
             // Sync user details to backend
-            await fetch('http://localhost:3000/api/auth/sync', {
+            await fetch('/api/auth/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -97,6 +114,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialView = 'login' }) => 
                     country: signupData.country
                 })
             });
+
+            // 🔐 Get backend JWT token for secure API access
+            const tokenResponse = await fetch('/api/auth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uid: userCredential.user.uid,
+                    email: signupData.email
+                })
+            });
+
+            if (tokenResponse.ok) {
+                const { token } = await tokenResponse.json();
+                localStorage.setItem('auth_token', token);
+                console.log('[Auth] JWT token obtained and stored');
+            }
 
             await sendEmailVerification(userCredential.user);
             setSuccessMsg(`Account created! Verification email sent to ${signupData.email}`);

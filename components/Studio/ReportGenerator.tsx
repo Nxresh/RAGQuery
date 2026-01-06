@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { Sparkles, Loader2, FileText, Download, Printer, Maximize, ZoomOut, Mail, MessageSquare, ChevronDown, Check, BookOpen, PenTool, Briefcase, FileCode, Lightbulb, Layers, ArrowLeft } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, LineChart, Line, Legend } from 'recharts';
 import { StudioDropZone } from './StudioDropZone';
+import { addToHistory } from '../HistoryPanel';
 
 const COLORS = ['#f97316', '#fb923c', '#fdba74', '#333333', '#4b5563'];
 
@@ -26,7 +27,14 @@ interface ReportData {
     sections: ReportSection[];
 }
 
-export const ReportGenerator = ({ sources, onFileUpload, isProcessing }: { sources: any[], onFileUpload: (file: File, type: string) => void, isProcessing: boolean }) => {
+export const ReportGenerator = ({ sources, onFileUpload, isProcessing, initialTopic, restoredContent, onClearRestored }: {
+    sources: any[],
+    onFileUpload: (file: File, type: string) => void,
+    isProcessing: boolean,
+    initialTopic?: string,
+    restoredContent?: any,
+    onClearRestored?: () => void
+}) => {
     const [topic, setTopic] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -36,6 +44,21 @@ export const ReportGenerator = ({ sources, onFileUpload, isProcessing }: { sourc
     const [isFullscreen, setIsFullscreen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (initialTopic) setTopic(initialTopic);
+    }, [initialTopic]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent && restoredContent.report) {
+            console.log('[Report] Restoring content:', restoredContent);
+            setReport(restoredContent.report);
+            if (restoredContent.topic) setTopic(restoredContent.topic);
+            if (restoredContent.format) setFormat(restoredContent.format);
+            if (onClearRestored) setTimeout(onClearRestored, 100);
+        }
+    }, [restoredContent, onClearRestored]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -100,6 +123,14 @@ export const ReportGenerator = ({ sources, onFileUpload, isProcessing }: { sourc
             }
 
             setReport(data);
+
+            // Save to history
+            const historyItems = addToHistory('ares_studio_history', topic, 'Report');
+            const historyId = historyItems[0].id;
+            localStorage.setItem(`ares_studio_${historyId}`, JSON.stringify({
+                content: { report: data, topic, format },
+                tab: 'report'
+            }));
         } catch (err: any) {
             console.error(err);
             setError(err.message || 'An error occurred');
@@ -285,7 +316,7 @@ export const ReportGenerator = ({ sources, onFileUpload, isProcessing }: { sourc
                                                                 paddingAngle={5}
                                                                 dataKey="value"
                                                                 stroke="none"
-                                                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                                                             >
                                                                 {section.chart.data?.map((_entry: any, index: number) => (
                                                                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

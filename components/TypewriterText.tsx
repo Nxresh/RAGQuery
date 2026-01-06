@@ -4,6 +4,7 @@ interface TypewriterTextProps {
     text: string;
     speed?: number;
     onComplete?: () => void;
+    stopped?: boolean;
 }
 
 import ReactMarkdown from 'react-markdown';
@@ -11,12 +12,24 @@ import ReactMarkdown from 'react-markdown';
 export const TypewriterText: React.FC<TypewriterTextProps> = ({
     text,
     speed = 10,
-    onComplete
+    onComplete,
+    stopped = false
 }) => {
     const [displayedText, setDisplayedText] = useState('');
     const [currentIndex, setCurrentIndex] = useState(0);
 
+    // If stopped, immediately show all text
     useEffect(() => {
+        if (stopped && currentIndex < text.length) {
+            setDisplayedText(text);
+            setCurrentIndex(text.length);
+            onComplete?.();
+        }
+    }, [stopped, text, currentIndex, onComplete]);
+
+    useEffect(() => {
+        if (stopped) return; // Don't animate if stopped
+
         if (currentIndex < text.length) {
             const timeout = setTimeout(() => {
                 setDisplayedText(prev => prev + text[currentIndex]);
@@ -27,7 +40,7 @@ export const TypewriterText: React.FC<TypewriterTextProps> = ({
         } else if (onComplete && currentIndex === text.length && text.length > 0) {
             onComplete();
         }
-    }, [currentIndex, text, speed, onComplete]);
+    }, [currentIndex, text, speed, onComplete, stopped]);
 
     // Reset when text changes
     useEffect(() => {
@@ -38,7 +51,7 @@ export const TypewriterText: React.FC<TypewriterTextProps> = ({
     return (
         <div className="typewriter-container">
             <ReactMarkdown>{displayedText}</ReactMarkdown>
-            {currentIndex < text.length && (
+            {currentIndex < text.length && !stopped && (
                 <span className="inline-block w-2 h-5 bg-orange-500 ml-1 animate-pulse align-middle" />
             )}
         </div>

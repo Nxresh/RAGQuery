@@ -41,8 +41,8 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
     const roots = nodes.filter(n => !targets.has(n.id));
 
     let currentY = 0;
-    const X_SPACING = 350; // Increased spacing for pill shape
-    const Y_SPACING = 50;
+    const X_SPACING = 320; // Spacing between levels (slightly reduced for deeper trees)
+    const Y_SPACING = 60;  // Vertical spacing between siblings
 
     const traverse = (nodeId: string, level: number) => {
         const children = childrenMap.get(nodeId) || [];
@@ -74,13 +74,42 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
     return { nodes, edges };
 };
 
-export const MindMapGenerator = ({ sources, onFileUpload, isProcessing }: { sources: any[], onFileUpload: (file: File, type: string) => void, isProcessing: boolean }) => {
+export const MindMapGenerator = ({ sources, onFileUpload, isProcessing, initialTopic, restoredContent, onClearRestored }: {
+    sources: any[],
+    onFileUpload: (file: File, type: string) => void,
+    isProcessing: boolean,
+    initialTopic?: string,
+    restoredContent?: any,
+    onClearRestored?: () => void
+}) => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [topic, setTopic] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [rfInstance, setRfInstance] = useState<any>(null);
+
+    // Populate topic from props (e.g. AI suggestions)
+    useEffect(() => {
+        if (initialTopic) {
+            setTopic(initialTopic);
+        }
+    }, [initialTopic]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent && restoredContent.nodes && restoredContent.edges) {
+            console.log('[MindMap] Restoring content:', restoredContent);
+            setNodes(restoredContent.nodes);
+            setEdges(restoredContent.edges);
+            if (restoredContent.topic) setTopic(restoredContent.topic);
+
+            // Clear restored content to prevent re-triggering
+            if (onClearRestored) {
+                setTimeout(onClearRestored, 100);
+            }
+        }
+    }, [restoredContent, onClearRestored, setNodes, setEdges]);
 
     // Fix: Use ref to access latest edges in onNodeToggle without adding it to dependency array
     // This prevents the handler from being recreated and stale closures in node data
@@ -227,14 +256,14 @@ export const MindMapGenerator = ({ sources, onFileUpload, isProcessing }: { sour
                     data: {
                         label: item.label,
                         details: item.details,
-                        isExpanded: level === 0, // Root starts expanded
+                        isExpanded: level === 0, // Only root is expanded initially
                         hasChildren: childrenIds.length > 0,
                         childrenIds, // Store explicit children IDs
                         onToggle: onNodeToggle,
                         id
                     },
                     position: { x: 0, y: 0 },
-                    hidden: level > 1, // Root (0) and its children (1) are visible
+                    hidden: level > 1, // Show only first 2 levels (0,1), hide 2+ for progressive reveal
                 });
 
                 if (parentId) {
@@ -257,8 +286,16 @@ export const MindMapGenerator = ({ sources, onFileUpload, isProcessing }: { sour
             setNodes(layoutedNodes);
             setEdges(layoutedEdges);
 
-            // Save to history
-            addToHistory('ares_studio_history', topic, 'Mind Map');
+            // Save to history with content
+            const historyItems = addToHistory('ares_studio_history', topic, 'Mind Map');
+            const historyId = historyItems[0].id;
+
+            // Save the actual mind map content for restoration
+            localStorage.setItem(`ares_studio_${historyId}`, JSON.stringify({
+                content: { nodes: layoutedNodes, edges: layoutedEdges },
+                tab: 'mindmap',
+                topic
+            }));
 
         } catch (err: any) {
             console.error(err);

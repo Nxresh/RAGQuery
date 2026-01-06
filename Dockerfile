@@ -3,11 +3,14 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Install build dependencies for native modules (bcrypt, etc.)
+RUN apk add --no-cache python3 make g++ 
+
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install all dependencies (include dev for build)
+RUN npm ci --legacy-peer-deps
 
 # Copy application code
 COPY . .
@@ -17,10 +20,10 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install sqlite3 and other runtime dependencies
+# Install runtime dependencies
 RUN apk add --no-cache sqlite
 
-# Copy from builder
+# Copy node_modules and app from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app .
 

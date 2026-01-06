@@ -2,7 +2,7 @@ import React from "react"
 import { User } from "firebase/auth"
 import { useSidebar, SidebarTrigger } from "./ui/sidebar"
 import { Button } from "./ui/button"
-import { HistoryPanel } from "./HistoryPanel"
+import { HistoryPanel, HistoryItem } from "./HistoryPanel"
 
 interface Project {
     id: number;
@@ -23,7 +23,7 @@ interface AppSidebarProps extends React.ComponentProps<"div"> {
     onRenameProject?: (project: Project) => void;
     onDeleteProject?: (project: Project) => void;
     onOpenLibrary?: () => void;
-    onHistorySelect?: (query: string) => void;
+    onHistorySelect?: (item: HistoryItem) => void;
 }
 
 export function AppSidebar({
@@ -45,6 +45,16 @@ export function AppSidebar({
     const { open, setOpen } = useSidebar()
     const hoverRef = React.useRef(false)
     const [sidebarView, setSidebarView] = React.useState<'sources' | 'history'>('sources')
+    const [isSearchExpanded, setIsSearchExpanded] = React.useState(false)
+    const [isProjectsExpanded, setIsProjectsExpanded] = React.useState(false)
+    const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+    // Focus search input when expanded
+    React.useEffect(() => {
+        if (isSearchExpanded && searchInputRef.current) {
+            searchInputRef.current.focus()
+        }
+    }, [isSearchExpanded])
 
     // Expand on hover, collapse on leave
     const handleMouseEnter = () => {
@@ -101,16 +111,16 @@ export function AppSidebar({
             {/* Expanded Full View */}
             {open && (
                 <div className="min-w-[260px] h-full flex flex-col">
-                    {/* Top Section */}
-                    <div className="p-3 space-y-4">
-                        <div className="flex items-center gap-2">
-                            {/* New Chat Button */}
+                    {/* Single Scrollable Container - ChatGPT Style */}
+                    <div className="flex-1 overflow-y-auto">
+                        {/* New Chat - Compact premium button */}
+                        <div className="px-3 pt-2 pb-1">
                             <Button
                                 onClick={onNewChat}
                                 variant="premium-subtle"
-                                className="w-full justify-start gap-3"
+                                className="w-full justify-start gap-2 py-2"
                                 leftIcon={
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <circle cx="12" cy="12" r="10" />
                                         <path d="M12 8v8" />
                                         <path d="M8 12h8" />
@@ -119,119 +129,168 @@ export function AppSidebar({
                             >
                                 New chat
                             </Button>
-                            <SidebarTrigger className="text-neutral-400 hover:text-white flex-shrink-0" />
                         </div>
 
-                        {/* Navigation Links */}
-                        <nav className="space-y-1">
-                            {/* Search Input */}
-                            <div className="px-3 py-2">
-                                <div className="relative group">
-                                    <svg className="absolute left-2 top-2.5 h-4 w-4 text-neutral-500 group-focus-within:text-orange-500 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        {/* Search Sources - Compact expandable search */}
+                        <div className="px-3 pb-0.5">
+                            {isSearchExpanded ? (
+                                <div className="relative">
+                                    <svg className="absolute left-3 top-2 h-4 w-4 text-orange-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                                         <circle cx="11" cy="11" r="8" />
-                                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                        <path d="M21 21l-4.35-4.35" />
                                     </svg>
                                     <input
+                                        ref={searchInputRef}
                                         type="text"
                                         placeholder="Search sources..."
                                         value={searchQuery}
                                         onChange={(e) => onSearchChange?.(e.target.value)}
-                                        className="w-full bg-white/5 text-neutral-200 text-sm rounded-lg pl-8 pr-3 py-2 border border-white/10 focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 focus:shadow-[0_0_20px_-5px_rgba(249,115,22,0.3)] focus:outline-none placeholder-neutral-600 transition-all"
+                                        onBlur={() => !searchQuery && setIsSearchExpanded(false)}
+                                        className="w-full bg-neutral-900 text-neutral-200 text-sm rounded-lg pl-9 pr-3 py-1.5 border border-orange-500/50 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 focus:outline-none placeholder-neutral-500 transition-all"
                                     />
                                 </div>
-                            </div>
+                            ) : (
+                                <button
+                                    onClick={() => setIsSearchExpanded(true)}
+                                    className="group flex items-center gap-2 w-full px-2 py-1.5 text-sm text-neutral-300 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-all duration-200"
+                                >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-orange-400">
+                                        <circle cx="11" cy="11" r="8" />
+                                        <path d="M21 21l-4.35-4.35" />
+                                    </svg>
+                                    <span>Search sources</span>
+                                </button>
+                            )}
+                        </div>
 
+                        {/* Library - Compact */}
+                        <div className="px-3 pb-0.5">
                             <button
                                 onClick={onOpenLibrary}
-                                className="group flex items-center gap-3 w-full px-3 py-2 text-sm text-neutral-400 hover:text-white hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent rounded-r-lg border-l-2 border-transparent hover:border-orange-500 transition-all duration-200"
+                                className="group flex items-center gap-2 w-full px-2 py-1.5 text-sm text-neutral-300 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-all duration-200"
                             >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="group-hover:scale-110 transition-transform duration-200">
-                                    <path d="M3 6h18M3 12h18M3 18h18" />
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-orange-400">
+                                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                                 </svg>
                                 <span>Library</span>
                             </button>
+                        </div>
 
-                            {/* Projects Section */}
-                            <div className="pt-4">
-                                <div className="flex items-center justify-between px-3 py-1 text-xs font-medium text-neutral-500 uppercase tracking-wider">
+                        {/* Projects - Collapsible */}
+                        <div className="px-3 pb-0.5">
+                            <button
+                                onClick={() => setIsProjectsExpanded(!isProjectsExpanded)}
+                                className="group flex items-center justify-between w-full px-2 py-1.5 text-sm text-neutral-300 hover:text-orange-400 hover:bg-orange-500/10 rounded-lg transition-all duration-200"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:text-orange-400">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                                    </svg>
                                     <span>Projects</span>
-                                    <button onClick={onCreateProject} className="hover:text-orange-400 transition-colors" title="Create Project">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                                        </svg>
-                                    </button>
-                                </div>
-                                <div className="mt-2 space-y-0.5">
-                                    {projects.map(project => (
-                                        <div key={project.id} className="group flex items-center w-full hover:bg-gradient-to-r hover:from-white/5 hover:to-transparent rounded-r-lg border-l-2 border-transparent hover:border-orange-500 transition-all duration-200 pr-2">
-                                            <button
-                                                onClick={() => onSelectProject?.(project)}
-                                                className="flex-1 flex items-center gap-3 px-3 py-2 text-sm text-neutral-400 group-hover:text-white truncate text-left transition-colors"
-                                            >
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-600 group-hover:text-orange-500/80 flex-shrink-0 transition-colors">
-                                                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                                                </svg>
-                                                <span className="truncate">{project.name}</span>
-                                            </button>
-                                            <div className="hidden group-hover:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onRenameProject?.(project); }}
-                                                    className="p-1 text-neutral-500 hover:text-white transition-colors"
-                                                    title="Rename"
-                                                >
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                                                    </svg>
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onDeleteProject?.(project); }}
-                                                    className="p-1 text-neutral-500 hover:text-red-400 transition-colors"
-                                                    title="Delete"
-                                                >
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                        <polyline points="3 6 5 6 21 6"></polyline>
-                                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {projects.length === 0 && (
-                                        <div className="px-3 py-2 text-xs text-neutral-600 italic">No projects yet</div>
+                                    {projects.length > 0 && (
+                                        <span className="text-xs text-neutral-500">({projects.length})</span>
                                     )}
                                 </div>
-                            </div>
-                        </nav>
-                    </div>
-
-                    {/* Toggle Tabs: Sources / History */}
-                    <div className="px-3 py-2 border-b border-white/5">
-                        <div className="flex bg-white/5 rounded-lg p-1">
-                            <button
-                                onClick={() => setSidebarView('sources')}
-                                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sidebarView === 'sources'
-                                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                    : 'text-neutral-500 hover:text-neutral-300'
-                                    }`}
-                            >
-                                Sources
-                            </button>
-                            <button
-                                onClick={() => setSidebarView('history')}
-                                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${sidebarView === 'history'
-                                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                                    : 'text-neutral-500 hover:text-neutral-300'
-                                    }`}
-                            >
-                                History
+                                <svg
+                                    width="12" height="12"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className={`text-neutral-500 group-hover:text-orange-400 transition-transform duration-200 ${isProjectsExpanded ? 'rotate-180' : ''}`}
+                                >
+                                    <polyline points="6 9 12 15 18 9"></polyline>
+                                </svg>
                             </button>
                         </div>
-                    </div>
 
-                    {/* Content Section - Sources or History */}
-                    <div className="flex-1 overflow-y-auto">
+                        {/* Projects List - Only show when expanded */}
+                        {isProjectsExpanded && (
+                            <div className="px-3 pb-1">
+                                {projects.length > 0 ? (
+                                    <div className="space-y-0 pl-5">
+                                        {projects.map(project => (
+                                            <div key={project.id} className="group flex items-center w-full hover:bg-white/5 rounded-md transition-all duration-200 pr-1">
+                                                <button
+                                                    onClick={() => onSelectProject?.(project)}
+                                                    className="flex-1 flex items-center gap-2 px-2 py-1 text-sm text-neutral-500 group-hover:text-white truncate text-left transition-colors"
+                                                >
+                                                    <span className="truncate">{project.name}</span>
+                                                </button>
+                                                <div className="hidden group-hover:flex items-center gap-0.5">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onRenameProject?.(project); }}
+                                                        className="p-0.5 text-neutral-500 hover:text-white transition-colors"
+                                                        title="Rename"
+                                                    >
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); onDeleteProject?.(project); }}
+                                                        className="p-0.5 text-neutral-500 hover:text-red-400 transition-colors"
+                                                        title="Delete"
+                                                    >
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="pl-5 py-1 text-xs text-neutral-600 italic">No projects yet</div>
+                                )}
+                                {/* New Project button inside expanded section */}
+                                <button
+                                    onClick={onCreateProject}
+                                    className="mt-1 ml-5 flex items-center gap-1 px-2 py-1 text-xs text-orange-400/70 hover:text-orange-400 transition-colors"
+                                >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                                    </svg>
+                                    <span>New project</span>
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Divider - Minimal */}
+                        <div className="border-t border-white/5 mx-3 my-1"></div>
+
+                        {/* Toggle Tabs: Sources / History - Compact */}
+                        <div className="px-3 py-1">
+                            <div className="flex bg-white/5 rounded-md p-0.5">
+                                <button
+                                    onClick={() => setSidebarView('sources')}
+                                    className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-all ${sidebarView === 'sources'
+                                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                        : 'text-neutral-500 hover:text-neutral-300'
+                                        }`}
+                                >
+                                    Sources
+                                </button>
+                                <button
+                                    onClick={() => setSidebarView('history')}
+                                    className={`flex-1 px-2 py-1 text-xs font-medium rounded transition-all ${sidebarView === 'history'
+                                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                                        : 'text-neutral-500 hover:text-neutral-300'
+                                        }`}
+                                >
+                                    History
+                                </button>
+                            </div>
+                        </div>
+
+
+                        {/* Sources/History Content - scrolls as part of the whole container */}
                         {sidebarView === 'sources' ? (
                             <div className="px-3 py-2">
                                 {children}
@@ -241,15 +300,15 @@ export function AppSidebar({
                                 storageKey="ares_chat_history"
                                 title="Chat History"
                                 onSelectItem={(item) => {
-                                    onHistorySelect?.(item.query);
+                                    onHistorySelect?.(item);
                                     setSidebarView('sources');
                                 }}
                             />
                         )}
                     </div>
 
-                    {/* User Profile Section */}
-                    <div className="p-3 border-t border-white/5">
+                    {/* User Profile Section - Fixed at bottom */}
+                    <div className="p-3 border-t border-white/5 flex-shrink-0">
                         {user ? (
                             <div className="flex items-center gap-3 px-3 py-3 bg-gradient-to-t from-white/5 to-transparent rounded-xl border border-white/5 hover:border-white/10 transition-all group">
                                 <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-medium text-xs shadow-lg shadow-purple-900/20">

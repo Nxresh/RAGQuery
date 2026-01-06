@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { FileText, Send, Loader2, Upload, RefreshCw, Check, ExternalLink, Edit3, BookOpen, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { FileText, Send, Loader2, Upload, RefreshCw, Check, ExternalLink, Edit3, BookOpen, ChevronRight, Settings, Shield } from 'lucide-react';
 import { Button } from '../ui/button';
 import { addToHistory } from '../HistoryPanel';
+import { secureStorage, sanitize, maskSensitive } from '../../utils/secureStorage';
 
 type Step = 'input' | 'review' | 'publish' | 'success';
 
@@ -17,15 +18,75 @@ interface PublishResponse {
     pageUrl: string;
 }
 
-export const ConfluenceAgent: React.FC = () => {
+interface ConfluenceConfig {
+    baseUrl: string;
+    email: string;
+    apiToken: string;
+    spaceKey: string;
+    parentPageId?: string;
+}
+
+const STORAGE_KEY = 'confluence_config';
+
+export const ConfluenceAgent: React.FC<{ initialInput?: string, restoredContent?: any, onClearRestored?: () => void }> = ({ initialInput, restoredContent, onClearRestored }) => {
     const [currentStep, setCurrentStep] = useState<Step>('input');
     const [knowledge, setKnowledge] = useState('');
     const [title, setTitle] = useState('');
     const [sopContent, setSopContent] = useState('');
-    const [spaceKey, setSpaceKey] = useState('DOCS');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [publishResult, setPublishResult] = useState<PublishResponse | null>(null);
+    const [configLoaded, setConfigLoaded] = useState(false);
+
+    useEffect(() => {
+        if (initialInput) setKnowledge(initialInput);
+    }, [initialInput]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent) {
+            console.log('[Confluence] Restoring content:', restoredContent);
+            if (restoredContent.sopContent) setSopContent(restoredContent.sopContent);
+            if (restoredContent.title) setTitle(restoredContent.title);
+            if (restoredContent.knowledge) setKnowledge(restoredContent.knowledge);
+            if (restoredContent.sopContent) setCurrentStep('review');
+            if (onClearRestored) setTimeout(onClearRestored, 100);
+        }
+    }, [restoredContent, onClearRestored]);
+
+    // User-configurable Confluence settings
+    const [confluenceConfig, setConfluenceConfig] = useState<ConfluenceConfig>({
+        baseUrl: '',
+        email: '',
+        apiToken: '',
+        spaceKey: '',
+        parentPageId: ''
+    });
+    const [showSettings, setShowSettings] = useState(false);
+
+    // Load encrypted config on mount
+    useEffect(() => {
+        const loadConfig = async () => {
+            try {
+                const saved = await secureStorage.getItem<ConfluenceConfig>(STORAGE_KEY);
+                if (saved) {
+                    setConfluenceConfig(saved);
+                }
+            } catch (e) {
+                console.error('[Security] Failed to load encrypted config');
+            } finally {
+                setConfigLoaded(true);
+            }
+        };
+        loadConfig();
+    }, []);
+
+    // Save encrypted config whenever it changes
+    useEffect(() => {
+        if (configLoaded && (confluenceConfig.baseUrl || confluenceConfig.email || confluenceConfig.spaceKey)) {
+            secureStorage.setItem(STORAGE_KEY, confluenceConfig);
+        }
+    }, [confluenceConfig, configLoaded]);
 
     const handleGenerate = async () => {
         if (!knowledge.trim() || knowledge.length < 10) {
@@ -53,8 +114,13 @@ export const ConfluenceAgent: React.FC = () => {
             if (data.suggestedTitle && !title) {
                 setTitle(data.suggestedTitle);
             }
-            // Save to history
-            addToHistory('ares_agents_history', title || data.suggestedTitle || 'SOP Generation', 'Confluence');
+            // Save to history with content
+            const historyItems = addToHistory('ares_agents_history', title || data.suggestedTitle || 'SOP Generation', 'Confluence');
+            const historyId = historyItems[0].id;
+            localStorage.setItem(`ares_agent_${historyId}`, JSON.stringify({
+                content: { sopContent: data.sopContent, title: title || data.suggestedTitle, knowledge: knowledge.trim() },
+                agent: 'confluence'
+            }));
             setCurrentStep('review');
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
@@ -64,8 +130,14 @@ export const ConfluenceAgent: React.FC = () => {
     };
 
     const handlePublish = async () => {
-        if (!sopContent || !title || !spaceKey) {
-            setError('Missing required fields');
+        if (!sopContent || !title) {
+            setError('Missing title or content');
+            return;
+        }
+
+        if (!confluenceConfig.baseUrl || !confluenceConfig.email || !confluenceConfig.apiToken || !confluenceConfig.spaceKey) {
+            setError('Please configure your Confluence settings (URL, Email, API Token, and Space Key)');
+            setShowSettings(true);
             return;
         }
 
@@ -79,7 +151,12 @@ export const ConfluenceAgent: React.FC = () => {
                 body: JSON.stringify({
                     title,
                     content: sopContent,
-                    spaceKey,
+                    // Pass user's Confluence config
+                    confluenceUrl: confluenceConfig.baseUrl,
+                    confluenceEmail: confluenceConfig.email,
+                    confluenceToken: confluenceConfig.apiToken,
+                    spaceKey: confluenceConfig.spaceKey,
+                    parentPageId: confluenceConfig.parentPageId || undefined,
                     action: 'create'
                 })
             });
@@ -262,22 +339,99 @@ When deploying to production, first we need to run the test suite. Then create a
                     {currentStep === 'publish' && (
                         <div className="space-y-4">
                             <div className="bg-white/5 border border-white/10 rounded-xl p-6 space-y-4">
-                                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                                    <Upload size={18} /> Publish to Confluence
-                                </h3>
-
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-neutral-300">Space Key</label>
-                                    <select
-                                        value={spaceKey}
-                                        onChange={(e) => setSpaceKey(e.target.value)}
-                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/50 transition-all"
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                        <Upload size={18} /> Publish to Confluence
+                                    </h3>
+                                    <Button
+                                        onClick={() => setShowSettings(!showSettings)}
+                                        variant="ghost"
+                                        className="text-neutral-400 hover:text-white"
                                     >
-                                        <option value="DOCS">Documentation (DOCS)</option>
-                                        <option value="TEAM">Team Space (TEAM)</option>
-                                        <option value="KB">Knowledge Base (KB)</option>
-                                    </select>
+                                        <Settings size={16} className="mr-2" /> {showSettings ? 'Hide' : 'Show'} Settings
+                                    </Button>
                                 </div>
+
+                                {/* Confluence Configuration */}
+                                {showSettings && (
+                                    <div className="bg-black/30 rounded-xl p-4 space-y-3 border border-orange-500/20">
+                                        <p className="text-sm font-medium text-orange-400 flex items-center gap-2">
+                                            <Settings size={14} /> Confluence Configuration
+                                        </p>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="col-span-2 space-y-1">
+                                                <label className="text-xs text-neutral-400">Confluence URL</label>
+                                                <input
+                                                    type="url"
+                                                    value={confluenceConfig.baseUrl}
+                                                    onChange={(e) => setConfluenceConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                                                    placeholder="https://yourcompany.atlassian.net"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-orange-500/50"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs text-neutral-400">Email</label>
+                                                <input
+                                                    type="email"
+                                                    value={confluenceConfig.email}
+                                                    onChange={(e) => setConfluenceConfig(prev => ({ ...prev, email: e.target.value }))}
+                                                    placeholder="your@email.com"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-orange-500/50"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs text-neutral-400">API Token</label>
+                                                <input
+                                                    type="password"
+                                                    value={confluenceConfig.apiToken}
+                                                    onChange={(e) => setConfluenceConfig(prev => ({ ...prev, apiToken: e.target.value }))}
+                                                    placeholder="••••••••••••"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-orange-500/50"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs text-neutral-400">Space Key</label>
+                                                <input
+                                                    type="text"
+                                                    value={confluenceConfig.spaceKey}
+                                                    onChange={(e) => setConfluenceConfig(prev => ({ ...prev, spaceKey: e.target.value }))}
+                                                    placeholder="e.g., DOCS, KB, TEAM"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-orange-500/50"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs text-neutral-400">Parent Page ID (Optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={confluenceConfig.parentPageId}
+                                                    onChange={(e) => setConfluenceConfig(prev => ({ ...prev, parentPageId: e.target.value }))}
+                                                    placeholder="e.g., 123456789"
+                                                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-neutral-500 focus:outline-none focus:border-orange-500/50"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <p className="text-xs text-neutral-500 mt-2">
+                                            Get your API token from: Atlassian Account → Security → API tokens
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Config Status Indicator */}
+                                {!showSettings && (
+                                    <div className={`rounded-lg p-3 ${confluenceConfig.baseUrl && confluenceConfig.email && confluenceConfig.apiToken && confluenceConfig.spaceKey ? 'bg-green-500/10 border border-green-500/20' : 'bg-yellow-500/10 border border-yellow-500/20'}`}>
+                                        <p className={`text-sm ${confluenceConfig.baseUrl && confluenceConfig.email && confluenceConfig.apiToken && confluenceConfig.spaceKey ? 'text-green-400' : 'text-yellow-400'}`}>
+                                            {confluenceConfig.baseUrl && confluenceConfig.email && confluenceConfig.apiToken && confluenceConfig.spaceKey
+                                                ? `✓ Configured: ${confluenceConfig.baseUrl} → ${confluenceConfig.spaceKey}`
+                                                : '⚠ Please configure your Confluence settings'}
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div className="bg-black/30 rounded-xl p-4">
                                     <p className="text-sm text-neutral-400 mb-2">Publishing:</p>
@@ -295,8 +449,8 @@ When deploying to production, first we need to run the test suite. Then create a
                                     </Button>
                                     <Button
                                         onClick={handlePublish}
-                                        disabled={isLoading}
-                                        className="flex-1 py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl shadow-lg shadow-orange-500/20"
+                                        disabled={isLoading || !confluenceConfig.baseUrl || !confluenceConfig.email || !confluenceConfig.apiToken || !confluenceConfig.spaceKey}
+                                        className="flex-1 py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
                                     >
                                         {isLoading ? (
                                             <><Loader2 size={18} className="animate-spin mr-2" /> Publishing...</>

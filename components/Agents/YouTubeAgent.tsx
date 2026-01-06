@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Youtube, Send, Loader2, Play, FileText, MessageSquare, ExternalLink } from 'lucide-react';
 import { Button } from '../ui/button';
 import { addToHistory } from '../HistoryPanel';
@@ -11,12 +11,27 @@ interface AgentResponse {
     answer: string;
 }
 
-export const YouTubeAgent: React.FC = () => {
+export const YouTubeAgent: React.FC<{ initialQuery?: string, restoredContent?: any, onClearRestored?: () => void }> = ({ initialQuery, restoredContent, onClearRestored }) => {
     const [videoUrl, setVideoUrl] = useState('');
     const [query, setQuery] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [response, setResponse] = useState<AgentResponse | null>(null);
+
+    useEffect(() => {
+        if (initialQuery) setQuery(initialQuery);
+    }, [initialQuery]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent) {
+            console.log('[YouTube] Restoring content:', restoredContent);
+            if (restoredContent.response) setResponse(restoredContent.response);
+            if (restoredContent.videoUrl) setVideoUrl(restoredContent.videoUrl);
+            if (restoredContent.query) setQuery(restoredContent.query);
+            if (onClearRestored) setTimeout(onClearRestored, 100);
+        }
+    }, [restoredContent, onClearRestored]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,8 +55,13 @@ export const YouTubeAgent: React.FC = () => {
             }
 
             setResponse(data);
-            // Save to history
-            addToHistory('ares_agents_history', query.trim(), 'YouTube');
+            // Save to history with content
+            const historyItems = addToHistory('ares_agents_history', query.trim(), 'YouTube');
+            const historyId = historyItems[0].id;
+            localStorage.setItem(`ares_agent_${historyId}`, JSON.stringify({
+                content: { response: data, videoUrl: videoUrl.trim(), query: query.trim() },
+                agent: 'youtube'
+            }));
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {

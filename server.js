@@ -28,6 +28,27 @@ import util from 'util';
 import { parsePDFWithMetadata, parseDocxWithMetadata, parseTextWithMetadata, generateVersionId } from './services/pdfParser.js';
 import { logQuery, extractCitations } from './services/auditLogger.js';
 import { expandQuery, decomposeQuery, generateHypotheticalAnswer, stepBackQuery, analyzeQueryComplexity, transformQuery } from './services/queryTransformer.js';
+
+// ============================================================
+// BULLETPROOF SECURITY - Import Security Middleware
+// ============================================================
+import security, {
+  rateLimiters,
+  validateRequest,
+  securityHeaders,
+  sanitizeRequestBody,
+  sanitizeQueryParams,
+  sanitizeUrlParams,
+  validateFileUpload,
+  detectSuspiciousActivity,
+  validateEnvironment,
+  deepSanitize,
+  lightSanitize,
+} from './services/securityMiddleware.js';
+
+// Validate environment variables at startup (will exit if critical vars missing)
+validateEnvironment();
+
 const execPromise = util.promisify(exec);
 const app = express();
 const PORT = process.env.PORT || 5190;
@@ -54,77 +75,57 @@ async function testDbConnection() {
 }
 testDbConnection();
 
-// CORS configuration
+// ============================================================
+// BULLETPROOF SECURITY MIDDLEWARE STACK
+// ============================================================
+
+// 1. Security Headers (Helmet) - Must be first
+app.use(securityHeaders);
+
+// 2. CORS configuration
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 app.use(cors({
   origin: corsOrigin.split(','), // Allows multiple origins via comma-separated list
   credentials: true
 }));
+
+// 3. Body parsers with size limits
 app.use(express.json({ limit: '10mb' })); // Limit payload size
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// ============================================================
-// ENTERPRISE SECURITY MIDDLEWARE
-// ============================================================
+// 4. Suspicious Activity Detection - Log and block attackers
+app.use(detectSuspiciousActivity);
 
-// Rate limiting for sensitive endpoints
-const requestCounts = new Map();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const MAX_REQUESTS = 100; // requests per window
+// 5. Input Sanitization - Deep clean all incoming data
+app.use(sanitizeRequestBody);
+app.use(sanitizeQueryParams);
+app.use(sanitizeUrlParams);
 
-const rateLimiter = (req, res, next) => {
-  const ip = req.ip || req.connection.remoteAddress;
-  const now = Date.now();
+// 6. Multi-tier Rate Limiting
+// Global rate limit for all API routes (100 req/min)
+app.use('/api/', rateLimiters.global);
 
-  if (!requestCounts.has(ip)) {
-    requestCounts.set(ip, { count: 1, startTime: now });
-    return next();
-  }
+// Stricter rate limits for sensitive endpoints
+app.use('/api/auth/', rateLimiters.auth);        // 10 req/15min (brute force protection)
+app.use('/api/upload', rateLimiters.upload);     // 10 uploads/min
+app.use('/api/process/', rateLimiters.upload);   // 10 file processes/min
+app.use('/api/generate-mindmap', rateLimiters.aiGeneration);  // 20 AI calls/min
+app.use('/api/generate-infographic', rateLimiters.aiGeneration);
+app.use('/api/generate-slidedeck', rateLimiters.aiGeneration);
+app.use('/api/generate-report', rateLimiters.aiGeneration);
+app.use('/api/regenerate-visual', rateLimiters.aiGeneration);
+app.use('/api/agents/', rateLimiters.aiGeneration);     // 20 AI calls/min
+app.use('/api/chat/', rateLimiters.aiGeneration);       // 20 AI calls/min
+app.use('/api/proxy', rateLimiters.search);             // 50 searches/min
 
-  const record = requestCounts.get(ip);
-  if (now - record.startTime > RATE_LIMIT_WINDOW) {
-    // Reset window
-    requestCounts.set(ip, { count: 1, startTime: now });
-    return next();
-  }
+console.log('🛡️  Bulletproof security middleware initialized');
+console.log('   ├─ Security headers (Helmet)');
+console.log('   ├─ Suspicious activity detection');
+console.log('   ├─ Deep input sanitization (XSS/SQL/NoSQL)');
+console.log('   ├─ Multi-tier rate limiting');
+console.log('   └─ Request validation enabled');
 
-  record.count++;
-  if (record.count > MAX_REQUESTS) {
-    console.log(`[Security] Rate limit exceeded for IP: ${ip}`);
-    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
-  }
-
-  next();
-};
-
-// Apply rate limiting to all API routes
-app.use('/api/', rateLimiter);
-
-// Enhanced security headers
-app.use((req, res, next) => {
-  // Prevent XSS attacks
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  // Prevent clickjacking
-  res.setHeader('X-Frame-Options', 'DENY');
-  // Prevent MIME type sniffing
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  // HSTS - enforce HTTPS
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  // Referrer policy
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  // Permissions policy
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  // Content Security Policy
-  res.setHeader('Content-Security-Policy',
-    "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com; " +
-    "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; " +
-    "img-src 'self' data: blob: https:; " +
-    "connect-src 'self' https://openrouter.ai https://generativelanguage.googleapis.com https://*.atlassian.net;"
-  );
-  next();
-});
 
 // ============================================================
 // JWT AUTHENTICATION SECURITY
@@ -209,7 +210,7 @@ app.get('/api/health', (_req, res) => {
 // ============================================================
 
 // Exchange Firebase UID for backend JWT (Hybrid Auth)
-app.post('/api/auth/token', async (req, res) => {
+app.post('/api/auth/token', validateRequest('POST /api/auth/token'), async (req, res) => {
   try {
     const { uid, email } = req.body;
 
@@ -268,7 +269,7 @@ app.post('/api/auth/refresh', authenticateJWT, (req, res) => {
 // ============================================================
 
 // Generate intelligent query suggestions based on source content
-app.post('/api/suggestions', async (req, res) => {
+app.post('/api/suggestions', validateRequest('POST /api/suggestions'), async (req, res) => {
   try {
     const { sourceIds, userId, featureType, featureContext } = req.body;
 
@@ -649,7 +650,7 @@ async function generateWithRetries(prompt, maxAttempts = 5) {
 }
 
 // RAG endpoint
-app.post('/api/proxy', async (req, res) => {
+app.post('/api/proxy', validateRequest('POST /api/proxy'), async (req, res) => {
   try {
     const { action, payload } = req.body;
     console.log(`[Proxy] Action: ${action}`);
@@ -955,7 +956,7 @@ ${fallbackContext}
 });
 
 // YouTube Transcript Endpoint
-app.post('/api/process/youtube', async (req, res) => {
+app.post('/api/process/youtube', validateRequest('POST /api/process/youtube'), async (req, res) => {
   let videoId = null;
   try {
     const { url } = req.body;
@@ -1174,7 +1175,7 @@ app.post('/api/process/audio', upload.single('audio'), async (req, res) => {
 // ============================================================
 // AGENTS - MCP YouTube Agent Endpoint
 // ============================================================
-app.post('/api/agents/youtube', async (req, res) => {
+app.post('/api/agents/youtube', validateRequest('POST /api/agents/youtube'), async (req, res) => {
   try {
     const { videoUrl, query } = req.body;
 
@@ -1363,7 +1364,7 @@ const CONFLUENCE_USERNAME = process.env.CONFLUENCE_USERNAME;
 const CONFLUENCE_API_TOKEN = process.env.CONFLUENCE_API_TOKEN || process.env.CONFLUENCE_PERSONAL_TOKEN;
 
 // Endpoint 1: Generate SOP from knowledge input
-app.post('/api/agents/confluence/generate', async (req, res) => {
+app.post('/api/agents/confluence/generate', validateRequest('POST /api/agents/confluence/generate'), async (req, res) => {
   try {
     const { knowledge, title } = req.body;
 
@@ -1453,7 +1454,7 @@ Create a comprehensive, professional SOP document based on the user's input. The
 });
 
 // Endpoint 2: Publish to Confluence via REST API (User-provided credentials)
-app.post('/api/agents/confluence/publish', async (req, res) => {
+app.post('/api/agents/confluence/publish', validateRequest('POST /api/agents/confluence/publish'), async (req, res) => {
   try {
     const {
       title,
@@ -1583,7 +1584,7 @@ app.get('/api/agents/confluence/spaces', async (req, res) => {
 });
 
 // Auth Sync
-app.post('/api/auth/sync', async (req, res) => {
+app.post('/api/auth/sync', validateRequest('POST /api/auth/sync'), async (req, res) => {
   const { uid, email, firstName, lastName, country } = req.body;
   console.log('[Auth Sync] Request:', { uid, email, country });
 
@@ -1624,7 +1625,7 @@ app.post('/api/auth/sync', async (req, res) => {
 });
 
 // Upload Endpoint (Enhanced with provenance tracking)
-app.post('/api/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', upload.single('file'), validateFileUpload, async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -1741,7 +1742,7 @@ app.get('/api/documents', async (req, res) => {
   }
 });
 
-app.post('/api/documents', async (req, res) => {
+app.post('/api/documents', validateRequest('POST /api/documents'), async (req, res) => {
   const userId = req.headers['x-user-id'];
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -1817,7 +1818,7 @@ app.get('/api/projects', async (req, res) => {
   }
 });
 
-app.post('/api/projects', async (req, res) => {
+app.post('/api/projects', validateRequest('POST /api/projects'), async (req, res) => {
   const userId = req.headers['x-user-id'];
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
@@ -1877,7 +1878,7 @@ app.delete('/api/projects/:id', async (req, res) => {
 });
 
 // Ares Chat
-app.post('/api/chat/ares', async (req, res) => {
+app.post('/api/chat/ares', validateRequest('POST /api/chat/ares'), async (req, res) => {
   try {
     const { query } = req.body;
     if (!query) return res.status(400).json({ error: 'Missing query' });
@@ -1936,7 +1937,7 @@ app.post('/api/chat/ares', async (req, res) => {
 
 // --- STUDIO ENDPOINTS ---
 
-app.post('/api/generate-mindmap', async (req, res) => {
+app.post('/api/generate-mindmap', validateRequest('POST /api/generate-mindmap'), async (req, res) => {
   try {
     const { topic, context } = req.body;
     if (!topic) return res.status(400).json({ error: 'Missing topic' });
@@ -2024,7 +2025,7 @@ app.post('/api/generate-mindmap', async (req, res) => {
   }
 });
 
-app.post('/api/generate-infographic', async (req, res) => {
+app.post('/api/generate-infographic', validateRequest('POST /api/generate-infographic'), async (req, res) => {
   try {
     const { topic, context, mode } = req.body;
     console.log(`[Infographic] Request received. Topic: "${topic}", Mode: "${mode}"`);
@@ -2152,7 +2153,7 @@ app.post('/api/generate-infographic', async (req, res) => {
   }
 });
 
-app.post('/api/generate-slidedeck', async (req, res) => {
+app.post('/api/generate-slidedeck', validateRequest('POST /api/generate-slidedeck'), async (req, res) => {
   try {
     const { topic, context } = req.body;
     if (!topic) return res.status(400).json({ error: 'Missing topic' });
@@ -2215,7 +2216,7 @@ app.post('/api/generate-slidedeck', async (req, res) => {
   }
 });
 
-app.post('/api/generate-report', async (req, res) => {
+app.post('/api/generate-report', validateRequest('POST /api/generate-report'), async (req, res) => {
   try {
     const { topic, context, format } = req.body;
     console.log('[Report Generation] Request received:', { topic, format }); // Debug log
@@ -2369,7 +2370,7 @@ app.post('/api/generate-report', async (req, res) => {
 });
 
 // Regenerate a specific visual
-app.post('/api/regenerate-visual', async (req, res) => {
+app.post('/api/regenerate-visual', validateRequest('POST /api/regenerate-visual'), async (req, res) => {
   try {
     const { slide_content, user_instruction, current_visual_description } = req.body;
 

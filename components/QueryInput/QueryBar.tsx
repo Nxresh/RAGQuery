@@ -1,5 +1,5 @@
 import React, { KeyboardEvent, useState, useRef, useEffect } from 'react';
-import { Plus, AudioLines, Send, Loader2, FileText, Link as LinkIcon, Image as ImageIcon, Mic, FileUp, X } from 'lucide-react';
+import { Plus, AudioLines, Send, Loader2, FileText, Link as LinkIcon, Image as ImageIcon, Mic, FileUp, X, PenSquare, Square } from 'lucide-react';
 import { Button } from '../ui/button';
 
 interface QueryBarProps {
@@ -7,10 +7,13 @@ interface QueryBarProps {
     onFileUpload?: (file: File, type: 'pdf' | 'image' | 'audio') => void;
     onLinkSubmit?: (url: string) => void;
     onTextSubmit?: (text: string) => void;
+    onNewChat?: () => void;
+    onStop?: () => void;
     isLoading: boolean;
     disabled: boolean;
     value: string;
     onChange: (value: string) => void;
+    hasMessages?: boolean;
 }
 
 export const QueryBar: React.FC<QueryBarProps> = ({
@@ -18,10 +21,13 @@ export const QueryBar: React.FC<QueryBarProps> = ({
     onFileUpload,
     onLinkSubmit,
     onTextSubmit,
+    onNewChat,
+    onStop,
     isLoading,
     disabled,
     value,
-    onChange
+    onChange,
+    hasMessages = false
 }) => {
     const [showMenu, setShowMenu] = useState(false);
     const [mode, setMode] = useState<'chat' | 'link' | 'text'>('chat');
@@ -156,6 +162,18 @@ export const QueryBar: React.FC<QueryBarProps> = ({
                     {mode !== 'chat' ? <X size={20} /> : <Plus size={20} />}
                 </button>
 
+                {/* New Chat Button - only show when there are messages */}
+                {hasMessages && onNewChat && (
+                    <button
+                        type="button"
+                        onClick={onNewChat}
+                        title="New Chat"
+                        className="flex-shrink-0 w-10 h-10 rounded-full border bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-orange-500 hover:border-orange-500/50 flex items-center justify-center transition-all duration-200"
+                    >
+                        <PenSquare size={18} />
+                    </button>
+                )}
+
                 {/* Input Pill */}
                 <div className={`flex-1 flex items-center bg-neutral-900 border rounded-full px-4 py-2 transition-all duration-200 ${mode === 'link' ? 'border-blue-500/50 ring-1 ring-blue-500/20' :
                     mode === 'text' ? 'border-green-500/50 ring-1 ring-green-500/20' :
@@ -177,20 +195,31 @@ export const QueryBar: React.FC<QueryBarProps> = ({
                     </div>
                 </div>
 
-                {/* Send Button */}
-                <Button
-                    type="submit"
-                    variant="premium-subtle"
-                    size="icon"
-                    disabled={!value.trim() || disabled || isLoading}
-                    className="flex-shrink-0 rounded-full shadow-lg"
-                >
-                    {isLoading ? (
-                        <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                        <Send size={18} className="ml-0.5" />
-                    )}
-                </Button>
+                {/* Send/Stop Button */}
+                {isLoading && onStop ? (
+                    <Button
+                        type="button"
+                        onClick={onStop}
+                        size="icon"
+                        className="flex-shrink-0 rounded-full shadow-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 text-red-400 hover:text-red-300"
+                    >
+                        <Square size={14} fill="currentColor" />
+                    </Button>
+                ) : (
+                    <Button
+                        type="submit"
+                        variant="premium-subtle"
+                        size="icon"
+                        disabled={!value.trim() || disabled || isLoading}
+                        className="flex-shrink-0 rounded-full shadow-lg"
+                    >
+                        {isLoading ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                            <Send size={18} className="ml-0.5" />
+                        )}
+                    </Button>
+                )}
             </form>
 
             {/* Helper text */}

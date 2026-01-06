@@ -16,7 +16,8 @@ import { QueryBar } from './QueryInput/QueryBar';
 import AnimatedNavBar from './Dock/AnimatedNavBar';
 import { Button } from './ui/button';
 import { CollapsedSidebarTrigger } from './CollapsedSidebarTrigger';
-import { addToHistory } from './HistoryPanel';
+import { addToHistory, HistoryItem } from './HistoryPanel';
+import { AntigravityParticles } from './CursorParticles';
 
 interface Source {
     id: number;
@@ -57,6 +58,9 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     const [currentQuery, setCurrentQuery] = useState('');
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const [isTyping, setIsTyping] = useState(false);
+    const [isStopped, setIsStopped] = useState(false);
 
     // View State
     const [activeView, setActiveView] = useState<'chat' | 'studio' | 'agents'>('chat');
@@ -65,6 +69,15 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     const [projects, setProjects] = useState<Project[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+
+    // AI-powered smart suggestions
+    const [smartSuggestions, setSmartSuggestions] = useState<string[]>([
+        "What are the key points?",
+        "Summarize the main topics",
+        "Explain the core concepts",
+        "List important details"
+    ]);
+    const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
 
     // Load sources and projects from backend
     useEffect(() => {
@@ -77,6 +90,50 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
     useEffect(() => {
         scrollToBottom();
     }, [conversations, isQuerying]);
+
+    // Fetch AI-powered smart suggestions when sources are selected
+    useEffect(() => {
+        const fetchSmartSuggestions = async () => {
+            if (selectedSources.length === 0) {
+                setSmartSuggestions([
+                    "What are the key points?",
+                    "Summarize the main topics",
+                    "Explain the core concepts",
+                    "List important details"
+                ]);
+                return;
+            }
+
+            setIsLoadingSuggestions(true);
+            try {
+                const response = await fetch('/api/suggestions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': user?.uid || ''
+                    },
+                    body: JSON.stringify({
+                        sourceIds: selectedSources,
+                        userId: user?.uid || 'anonymous'
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.suggestions && data.suggestions.length > 0) {
+                        setSmartSuggestions(data.suggestions);
+                        console.log('[Suggestions] AI suggestions loaded:', data.suggestions);
+                    }
+                }
+            } catch (err) {
+                console.error('[Suggestions] Failed to fetch:', err);
+            } finally {
+                setIsLoadingSuggestions(false);
+            }
+        };
+
+        fetchSmartSuggestions();
+    }, [selectedSources, user]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112,17 +169,19 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         }
     };
 
-    const saveSource = async (title: string, content: string, type: string, isStarred: boolean = false) => {
+    const saveSource = async (title: string, content: string, type: string, isStarred: boolean = false, thumbnail?: string): Promise<number> => {
         const response = await fetch('/api/documents', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-User-Id': user?.uid || ''
             },
-            body: JSON.stringify({ title, content, type, isStarred })
+            body: JSON.stringify({ title, content, type, isStarred, thumbnail })
         });
 
         if (!response.ok) throw new Error('Failed to save source');
+        const data = await response.json();
+        return data.id; // Return the new document ID
     };
 
     const handleLinkSubmit = async (url: string, isStarred: boolean) => {
@@ -211,8 +270,18 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                     throw new Error(errorData.error || `Image processing failed: ${response.status}`);
                 }
 
+                // Convert image to base64 for thumbnail storage
+                const reader = new FileReader();
+                const thumbnailPromise = new Promise<string>((resolve) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.readAsDataURL(file);
+                });
+                const thumbnail = await thumbnailPromise;
+
                 const data = await response.json();
-                await saveSource(file.name, data.text, 'image');
+                const newDocId = await saveSource(file.name, data.text, 'image', false, thumbnail);
+                // Auto-select the newly uploaded source
+                setSelectedSources(prev => [...prev, newDocId]);
 
             } else if (type === 'audio') {
                 const formData = new FormData();
@@ -226,7 +295,9 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                 if (!response.ok) throw new Error('Failed to transcribe audio');
 
                 const data = await response.json();
-                await saveSource(file.name, data.transcript, 'audio');
+                const newDocId = await saveSource(file.name, data.transcript, 'audio');
+                // Auto-select the newly uploaded source
+                setSelectedSources(prev => [...prev, newDocId]);
             }
 
             await fetchSources();
@@ -270,6 +341,22 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         }
     };
 
+    const handleRenameSource = async (id: number, newTitle: string) => {
+        try {
+            await fetch(`/api/documents/${id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-User-Id': user?.uid || ''
+                },
+                body: JSON.stringify({ title: newTitle })
+            });
+            await fetchSources();
+        } catch (err) {
+            setError('Failed to rename source');
+        }
+    };
+
     const handleToggleSource = (id: number) => {
         setSelectedSources(prev =>
             prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
@@ -291,8 +378,15 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
             return;
         }
 
+        // Save query to history for Netflix-style suggestions
+        const storedHistory = localStorage.getItem('ragQueryHistory');
+        const queryHistory: string[] = storedHistory ? JSON.parse(storedHistory) : [];
+        const newHistory = [currentQuery, ...queryHistory.filter(q => q !== currentQuery)].slice(0, 10);
+        localStorage.setItem('ragQueryHistory', JSON.stringify(newHistory));
+
         setIsQuerying(true);
         setError(null);
+        setIsStopped(false); // Reset stop state for new query
 
         // Add user message immediately (Optimistic UI)
         const tempId = Date.now();
@@ -305,12 +399,16 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
             timestamp: new Date()
         }]);
 
-        // Save to history
-        addToHistory('ares_chat_history', query);
+        // Save to history and get the history item ID for conversation storage
+        const historyItems = addToHistory('ares_chat_history', query);
+        const historyId = historyItems[0]?.id; // Most recent item is first
 
         try {
             const selectedSourcesData = sources.filter(s => selectedSources.includes(s.id));
             const combinedContent = selectedSourcesData.map(s => s.content).join('\n\n');
+
+            // Create AbortController for this request
+            abortControllerRef.current = new AbortController();
 
             const response = await fetch('/api/proxy', {
                 method: 'POST',
@@ -319,28 +417,67 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                     action: 'rag',
                     payload: {
                         documentContent: combinedContent,
-                        query
+                        query,
+                        sourceDetails: selectedSourcesData.map(s => ({ id: s.id, title: s.title })),
+                        hybridSearch: true,
+                        sophisticatedProcessing: true
                     }
-                })
+                }),
+                signal: abortControllerRef.current.signal
             });
 
-            if (!response.ok) throw new Error('Query failed');
+            if (!response.ok) {
+                throw new Error('Query failed');
+            }
 
             const data = await response.json();
 
+            // Start typing animation
+            setIsTyping(true);
+
             // Update the placeholder message with the actual result
-            setConversations(prev => prev.map(msg =>
-                msg.id === tempId ? { ...msg, result: data } : msg
-            ));
+            setConversations(prev => {
+                const updated = prev.map(msg =>
+                    msg.id === tempId ? { ...msg, result: data } : msg
+                );
+
+                // Store conversation with history ID for later restore
+                if (historyId) {
+                    localStorage.setItem(`ares_convo_${historyId}`, JSON.stringify(updated));
+                    console.log('[History] Stored conversation for:', historyId);
+                }
+
+                return updated;
+            });
         } catch (err) {
-            console.error('Query error:', err);
-            setError(err instanceof Error ? err.message : 'Query failed');
-            // Remove the optimistic message on failure
-            setConversations(prev => prev.filter(msg => msg.id !== tempId));
-            setCurrentQuery(query);
+            // Don't show error if request was aborted by user
+            if (err instanceof Error && err.name === 'AbortError') {
+                console.log('[Query] Request cancelled by user');
+                // Keep the user's message but mark it as cancelled
+                setConversations(prev => prev.map(msg =>
+                    msg.id === tempId ? { ...msg, result: { synthesizedAnswer: '⚠️ Generation stopped by user', rankedChunks: [] } } : msg
+                ));
+            } else {
+                console.error('Query error:', err);
+                setError(err instanceof Error ? err.message : 'Query failed');
+                // Remove the optimistic message on failure
+                setConversations(prev => prev.filter(msg => msg.id !== tempId));
+                setCurrentQuery(query);
+            }
         } finally {
             setIsQuerying(false);
+            abortControllerRef.current = null;
         }
+    };
+
+    const handleStopQuery = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            console.log('[Query] Abort signal sent');
+        }
+        // Stop typing animation immediately
+        setIsStopped(true);
+        setIsTyping(false);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -451,10 +588,72 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
         setCurrentQuery('');
     };
 
+    // Netflix-style: Mix exploitation (history) + exploration (source keywords)
+    const getSuggestions = (): string[] => {
+        // Get query history from localStorage
+        const storedHistory = localStorage.getItem('ragQueryHistory');
+        const queryHistory: string[] = storedHistory ? JSON.parse(storedHistory) : [];
+
+        // Extract keywords from source titles
+        const sourceKeywords: string[] = [];
+        sources.forEach(src => {
+            const words = src.title
+                .replace(/\.[^/.]+$/, '') // Remove extension
+                .replace(/[_-]/g, ' ')
+                .split(/\s+/)
+                .filter(w => w.length > 3)
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+            sourceKeywords.push(...words);
+        });
+        const uniqueKeywords = [...new Set(sourceKeywords)];
+
+        // Default suggestions if no history/sources
+        if (queryHistory.length === 0 && sources.length === 0) {
+            return [
+                "Summarize the key points",
+                "What are the main topics?",
+                "Explain the main concept",
+                "List all important details"
+            ];
+        }
+
+        const suggestions: string[] = [];
+
+        // 80% Exploitation: From query history (max 2)
+        suggestions.push(...queryHistory.slice(0, 2));
+
+        // 20% Exploration: From source keywords
+        if (uniqueKeywords.length > 0) {
+            const randomKeyword = uniqueKeywords[Math.floor(Math.random() * uniqueKeywords.length)];
+            suggestions.push(`Tell me about ${randomKeyword}`);
+        }
+
+        // Fill remaining with source-based
+        if (suggestions.length < 4 && sources.length > 0) {
+            suggestions.push(`Summarize "${sources[0].title}"`);
+        }
+
+        // Fallback defaults
+        const defaults = ["Summarize the key points", "What are the main topics?", "List all important details"];
+        while (suggestions.length < 4) {
+            const next = defaults[suggestions.length % defaults.length];
+            if (!suggestions.includes(next)) suggestions.push(next);
+            else break;
+        }
+
+        return suggestions.slice(0, 4);
+    };
+
     return (
         <>
+            {/* Dark background layer */}
+            <div className="fixed inset-0 bg-black z-0" />
+
+            {/* Antigravity-style particle effect - blue shards with magnetic cursor attraction */}
+            <AntigravityParticles />
+
             <SidebarProvider>
-                <div className="flex h-screen bg-black overflow-hidden w-full">
+                <div className="flex h-screen bg-transparent overflow-hidden w-full relative z-10">
                     {/* Sidebar */}
                     <AppSidebar
                         user={user || undefined}
@@ -467,13 +666,31 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                         onRenameProject={handleRenameProject}
                         onDeleteProject={handleDeleteProject}
                         onOpenLibrary={() => setIsLibraryOpen(true)}
-                        onHistorySelect={(query) => setCurrentQuery(query)}
+                        onHistorySelect={(item: HistoryItem) => {
+                            // Try to restore conversation from localStorage
+                            const storedConvo = localStorage.getItem(`ares_convo_${item.id}`);
+                            if (storedConvo) {
+                                try {
+                                    const restoredConvo = JSON.parse(storedConvo);
+                                    setConversations(restoredConvo);
+                                    console.log('[History] Restored conversation:', item.query);
+                                } catch (e) {
+                                    console.error('[History] Failed to restore:', e);
+                                    // Fallback: just set the query
+                                    setCurrentQuery(item.query);
+                                }
+                            } else {
+                                // No stored conversation, just put query in input
+                                setCurrentQuery(item.query);
+                            }
+                        }}
                     >
                         <div className="mb-4">
                             <h2 className="text-xs font-medium text-neutral-500 mb-2 px-2 uppercase tracking-wider">Sources</h2>
                             <SourceManager
                                 sources={filteredSources}
                                 onDelete={handleDeleteSource}
+                                onRename={handleRenameSource}
                                 selectedSources={selectedSources}
                                 onToggleSource={handleToggleSource}
                                 onToggleAll={handleToggleAll}
@@ -481,7 +698,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                         </div>
                     </AppSidebar>
 
-                    <SidebarInset className="bg-black flex-1 flex flex-col min-w-0">
+                    <SidebarInset className="bg-black/40 backdrop-blur-md flex-1 flex flex-col min-w-0">
                         {/* ========== TOP BAR ========== */}
                         <div className="topbar">
                             <div className="topbar-left">
@@ -524,6 +741,21 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                             </div>
 
                             <div className="topbar-right">
+                                {/* New Chat Button - only show when there are conversations */}
+                                {conversations.length > 0 && (
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={handleNewChat}
+                                        title="New Chat"
+                                        className="rounded-full text-neutral-400 hover:text-orange-500 hover:bg-orange-500/10"
+                                    >
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                            <path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"></path>
+                                        </svg>
+                                    </Button>
+                                )}
                                 <Button
                                     variant="premium"
                                     size="icon"
@@ -561,6 +793,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                     selectedSources={selectedSources}
                                     onFileUpload={handleFileUpload}
                                     isProcessing={isProcessing}
+                                    userId={user?.uid}
                                 />
                             </div>
                         ) : activeView === 'agents' ? (
@@ -568,6 +801,7 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                 <AgentsLayout
                                     sources={sources}
                                     selectedSources={selectedSources}
+                                    userId={user?.uid}
                                 />
                             </div>
                         ) : (
@@ -619,21 +853,61 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                                             {item.result ? (
                                                                 <>
                                                                     <div className="prose prose-invert prose-sm max-w-none">
-                                                                        <TypewriterText text={item.result.synthesizedAnswer || ''} speed={10} />
+                                                                        <TypewriterText
+                                                                            text={item.result.synthesizedAnswer || ''}
+                                                                            speed={10}
+                                                                            onComplete={() => setIsTyping(false)}
+                                                                            stopped={isStopped}
+                                                                        />
                                                                     </div>
 
-                                                                    {/* Sources */}
+                                                                    {/* Sources with enhanced metadata */}
                                                                     {item.result.rankedChunks && item.result.rankedChunks.length > 0 && (
                                                                         <div className="mt-4 pt-4 border-t border-neutral-800">
-                                                                            <p className="text-xs font-semibold text-neutral-500 mb-2">Sources:</p>
+                                                                            <p className="text-xs font-semibold text-neutral-400 mb-3 flex items-center gap-2">
+                                                                                <svg className="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                                                </svg>
+                                                                                Sources Referenced
+                                                                            </p>
                                                                             <div className="space-y-2">
                                                                                 {item.result.rankedChunks.slice(0, 3).map((chunk, idx) => (
-                                                                                    <div key={idx} className="bg-neutral-900 border border-neutral-800 rounded p-2 text-xs text-neutral-400">
-                                                                                        <div className="flex justify-between mb-1">
-                                                                                            <span className="font-medium text-orange-500">Relevance: {chunk.relevanceScore}%</span>
+                                                                                    <details key={idx} className="group rounded-lg border border-neutral-800 bg-neutral-900/50 hover:border-orange-500/30 transition-all duration-200">
+                                                                                        <summary className="px-4 py-3 cursor-pointer list-none select-none">
+                                                                                            <div className="flex items-center justify-between">
+                                                                                                <div className="flex items-center gap-3">
+                                                                                                    <div className="flex items-center justify-center w-7 h-7 rounded-md bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/20">
+                                                                                                        <span className="text-[10px] font-bold text-orange-400">{chunk.sourceIndex || idx + 1}</span>
+                                                                                                    </div>
+                                                                                                    <div className="flex flex-col">
+                                                                                                        <span className="text-xs font-medium text-neutral-200">
+                                                                                                            {chunk.documentTitle || `Source ${chunk.sourceIndex || idx + 1}`}
+                                                                                                        </span>
+                                                                                                        <div className="flex items-center gap-2 text-[10px] text-neutral-500">
+                                                                                                            {chunk.pageNumber && <span>Page {chunk.pageNumber}</span>}
+                                                                                                            {chunk.sectionId && <span>§{chunk.sectionId}</span>}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-3">
+                                                                                                    <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                                                                                                        {chunk.relevanceScore}% match
+                                                                                                    </span>
+                                                                                                    <svg className="w-4 h-4 text-neutral-500 transition-transform duration-200 group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                                                                    </svg>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                            <p className="mt-2 text-xs text-neutral-400 leading-relaxed line-clamp-2 group-open:hidden">{chunk.chunkText}</p>
+                                                                                        </summary>
+                                                                                        <div className="px-4 pb-4 pt-2 border-t border-neutral-800/50">
+                                                                                            <div className="p-3 rounded-md bg-neutral-950/80 border border-neutral-800/50 max-h-64 overflow-y-auto">
+                                                                                                <p className="text-xs text-neutral-300 leading-relaxed whitespace-pre-wrap font-mono">
+                                                                                                    {chunk.chunkText}
+                                                                                                </p>
+                                                                                            </div>
                                                                                         </div>
-                                                                                        <p className="line-clamp-2">{chunk.chunkText}</p>
-                                                                                    </div>
+                                                                                    </details>
                                                                                 ))}
                                                                             </div>
                                                                         </div>
@@ -669,23 +943,25 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                         </div>
                                     )}
 
-                                    {/* Quick Suggestions */}
+                                    {/* Quick Suggestions - AI-powered smart suggestions */}
                                     {selectedSources.length > 0 && conversations.length === 0 && (
                                         <div className="mb-3 flex flex-wrap gap-2 justify-center">
-                                            {[
-                                                "Summarize the key points",
-                                                "What are the main topics?",
-                                                "Explain the main concept",
-                                                "List all important details"
-                                            ].map((suggestion, idx) => (
-                                                <button
-                                                    key={idx}
-                                                    onClick={() => setCurrentQuery(suggestion)}
-                                                    className="px-4 py-2 text-sm bg-white/5 hover:bg-orange-500/20 border border-white/10 hover:border-orange-500/30 rounded-full text-neutral-300 hover:text-orange-400 transition-all duration-200"
-                                                >
-                                                    {suggestion}
-                                                </button>
-                                            ))}
+                                            {isLoadingSuggestions ? (
+                                                <div className="flex items-center gap-2 text-neutral-500 text-sm">
+                                                    <div className="w-2 h-2 bg-orange-500 rounded-full animate-bounce"></div>
+                                                    <span>Analyzing sources...</span>
+                                                </div>
+                                            ) : (
+                                                smartSuggestions.map((suggestion, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => setCurrentQuery(suggestion)}
+                                                        className="px-4 py-2 text-sm bg-white/5 hover:bg-orange-500/20 border border-white/10 hover:border-orange-500/30 rounded-full text-neutral-300 hover:text-orange-400 transition-all duration-200"
+                                                    >
+                                                        {suggestion}
+                                                    </button>
+                                                ))
+                                            )}
                                         </div>
                                     )}
 
@@ -704,7 +980,10 @@ export const NotebookLMLayout: React.FC<NotebookLMLayoutProps> = ({ onSignOut, u
                                                 setIsProcessing(false);
                                             }
                                         }}
-                                        isLoading={isQuerying || isProcessing}
+                                        onNewChat={handleNewChat}
+                                        onStop={handleStopQuery}
+                                        hasMessages={conversations.length > 0}
+                                        isLoading={isQuerying || isProcessing || isTyping}
                                         disabled={isQuerying || isProcessing || selectedSources.length === 0}
                                         value={currentQuery}
                                         onChange={setCurrentQuery}

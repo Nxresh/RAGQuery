@@ -97,15 +97,62 @@ export function AresChat() {
         }
     };
 
+    // Extract keywords from document titles for exploration suggestions
+    const extractKeywordsFromDocs = (): string[] => {
+        if (documents.length === 0) return [];
+
+        const keywords: string[] = [];
+
+        documents.forEach(doc => {
+            // Extract meaningful words from title
+            const titleWords = doc.title
+                .replace(/\.[^/.]+$/, '') // Remove file extension
+                .replace(/[_-]/g, ' ') // Replace underscores/hyphens with spaces
+                .split(/\s+/)
+                .filter((w: string) => w.length > 3) // Only words > 3 chars
+                .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+            keywords.push(...titleWords);
+        });
+
+        // Remove duplicates and shuffle for variety
+        return [...new Set(keywords)].sort(() => Math.random() - 0.5);
+    };
+
+    // Netflix-style: Mix exploitation (history) + exploration (source keywords)
     const getSuggestions = (): string[] => {
-        if (queryHistory.length === 0) {
+        const suggestions: string[] = [];
+        const sourceKeywords = extractKeywordsFromDocs();
+
+        // If no history AND no documents, show defaults
+        if (queryHistory.length === 0 && documents.length === 0) {
             return [
                 "Summarize the key points from my documents",
                 "What are the main themes in my knowledge base?",
                 "Create a comparison of the uploaded documents"
             ];
         }
-        return queryHistory.slice(0, 3);
+
+        // 80% Exploitation: From query history (safe picks)
+        const historyCount = Math.min(2, queryHistory.length);
+        suggestions.push(...queryHistory.slice(0, historyCount));
+
+        // 20% Exploration: Generate suggestions from document content
+        if (sourceKeywords.length > 0) {
+            const explorationPrompts = [
+                `Tell me about ${sourceKeywords[0]}`,
+                `What does the document say about ${sourceKeywords[Math.floor(Math.random() * sourceKeywords.length)]}?`,
+                `Summarize the content related to ${documents[0]?.title || 'my sources'}`
+            ];
+            // Add 1 exploration suggestion
+            suggestions.push(explorationPrompts[Math.floor(Math.random() * explorationPrompts.length)]);
+        }
+
+        // Fill remaining slots with document-based suggestions
+        if (suggestions.length < 3 && documents.length > 0) {
+            suggestions.push(`What are the key points in "${documents[0].title}"?`);
+        }
+
+        return suggestions.slice(0, 3);
     };
 
     return (

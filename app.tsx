@@ -4,6 +4,26 @@ import { auth } from './firebase';
 import { NotebookLMLayout } from './components/NotebookLMLayout';
 import { AuthPage } from './components/Auth/AuthPage';
 import { Button } from './components/ui/button';
+import * as Sentry from '@sentry/react';
+
+// Initialize Sentry for frontend monitoring (only if DSN configured)
+if (import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration({
+        maskAllText: false,
+        blockAllMedia: false,
+      }),
+    ],
+    tracesSampleRate: 0.2,
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
+  });
+  console.log('📊 Sentry frontend monitoring initialized');
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);

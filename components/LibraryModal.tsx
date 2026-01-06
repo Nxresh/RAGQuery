@@ -6,6 +6,7 @@ interface Source {
     type: string;
     content: string;
     created_at: string;
+    metadata?: string | { thumbnail?: string };
 }
 
 interface LibraryModalProps {
@@ -21,6 +22,19 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({ isOpen, onClose, sou
 
     const images = sources.filter(s => s.type === 'image');
     const audioFiles = sources.filter(s => s.type === 'audio');
+
+    // Helper to extract thumbnail from metadata
+    const getThumbnail = (source: Source): string | null => {
+        if (!source.metadata) return null;
+        try {
+            const meta = typeof source.metadata === 'string'
+                ? JSON.parse(source.metadata)
+                : source.metadata;
+            return meta?.thumbnail || null;
+        } catch {
+            return null;
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -61,24 +75,34 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({ isOpen, onClose, sou
                 <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'images' && (
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {images.map(img => (
-                                <div key={img.id} className="group relative aspect-square bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700">
-                                    {/* Since we don't store the actual image URL in DB (just text analysis), we can't show the image itself easily without storing the blob. 
-                                        For now, we'll show a placeholder with the title. 
-                                        In a real app, we'd store the file path or base64. */}
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-600 mb-2">
-                                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                                            <circle cx="8.5" cy="8.5" r="1.5" />
-                                            <polyline points="21 15 16 10 5 21" />
-                                        </svg>
-                                        <span className="text-xs text-neutral-400 line-clamp-2">{img.title}</span>
+                            {images.map(img => {
+                                const thumbnail = getThumbnail(img);
+                                return (
+                                    <div key={img.id} className="group relative aspect-square bg-neutral-800 rounded-lg overflow-hidden border border-neutral-700 hover:border-orange-500/50 transition-colors">
+                                        {thumbnail ? (
+                                            <img
+                                                src={thumbnail}
+                                                alt={img.title}
+                                                className="absolute inset-0 w-full h-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
+                                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-neutral-600 mb-2">
+                                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                                                    <circle cx="8.5" cy="8.5" r="1.5" />
+                                                    <polyline points="21 15 16 10 5 21" />
+                                                </svg>
+                                                <span className="text-xs text-neutral-400 line-clamp-2">{img.title}</span>
+                                            </div>
+                                        )}
+                                        {/* Hover overlay with title */}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                                            <p className="text-xs text-white font-medium truncate">{img.title}</p>
+                                            <p className="text-[10px] text-neutral-400">{new Date(img.created_at).toLocaleDateString()}</p>
+                                        </div>
                                     </div>
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
-                                        <p className="text-xs text-white line-clamp-4">{img.content}</p>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {images.length === 0 && (
                                 <div className="col-span-full text-center py-12 text-neutral-500">
                                     No images uploaded yet.

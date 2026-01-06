@@ -1,8 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Loader2, ChevronLeft, ChevronRight, MonitorPlay, Presentation, LayoutTemplate, Maximize, ZoomOut, X, RefreshCcw } from 'lucide-react';
 import { StudioDropZone } from './StudioDropZone';
+import { addToHistory } from '../HistoryPanel';
 
-export const SlideDeckGenerator = ({ sources, onFileUpload, isProcessing }: { sources: any[], onFileUpload: (file: File, type: string) => void, isProcessing: boolean }) => {
+export const SlideDeckGenerator = ({ sources, onFileUpload, isProcessing, initialTopic, restoredContent, onClearRestored }: {
+    sources: any[],
+    onFileUpload: (file: File, type: string) => void,
+    isProcessing: boolean,
+    initialTopic?: string,
+    restoredContent?: any,
+    onClearRestored?: () => void
+}) => {
     const [topic, setTopic] = useState('');
     const [loading, setLoading] = useState(false);
     const [slides, setSlides] = useState<any[]>([]);
@@ -12,6 +20,23 @@ export const SlideDeckGenerator = ({ sources, onFileUpload, isProcessing }: { so
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [regeneratingVisual, setRegeneratingVisual] = useState<{ slideIdx: number, visualIdx: number } | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (initialTopic) setTopic(initialTopic);
+    }, [initialTopic]);
+
+    // Restore from history
+    useEffect(() => {
+        if (restoredContent && restoredContent.slides) {
+            console.log('[SlideDeck] Restoring content:', restoredContent);
+            setSlides(restoredContent.slides);
+            setDeckTitle(restoredContent.deckTitle || '');
+            setDeckSubtitle(restoredContent.deckSubtitle || '');
+            if (restoredContent.topic) setTopic(restoredContent.topic);
+            setCurrentSlide(0);
+            if (onClearRestored) setTimeout(onClearRestored, 100);
+        }
+    }, [restoredContent, onClearRestored]);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -58,6 +83,14 @@ export const SlideDeckGenerator = ({ sources, onFileUpload, isProcessing }: { so
                 setDeckTitle(data.title);
                 setDeckSubtitle(data.subtitle);
                 setCurrentSlide(0);
+
+                // Save to history
+                const historyItems = addToHistory('ares_studio_history', topic, 'Slide Deck');
+                const historyId = historyItems[0].id;
+                localStorage.setItem(`ares_studio_${historyId}`, JSON.stringify({
+                    content: { slides: data.slides, deckTitle: data.title, deckSubtitle: data.subtitle, topic },
+                    tab: 'slidedeck'
+                }));
             }
         } catch (err: any) {
             console.error(err);
@@ -80,7 +113,7 @@ export const SlideDeckGenerator = ({ sources, onFileUpload, isProcessing }: { so
             const newSlides = [...prevSlides];
             const slide = { ...newSlides[slideIdx] };
             if (slide.visual_svgs && Array.isArray(slide.visual_svgs)) {
-                slide.visual_svgs = slide.visual_svgs.filter((_, idx) => idx !== visualIdx);
+                slide.visual_svgs = slide.visual_svgs.filter((_: any, idx: number) => idx !== visualIdx);
                 newSlides[slideIdx] = slide;
             }
             return newSlides;
