@@ -1,7 +1,9 @@
 node_modules/
-dist/
+# dist/ - Committed for Railway deployment
 .vite/
 *.log
 .env
 .env.local
 .DS_Store
+.vercel
+.env*.local
