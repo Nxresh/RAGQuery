@@ -2,8 +2,8 @@
 # Force Node.js as the primary provider (not Python)
 
 [phases.setup]
-nixPkgs = ["nodejs_20"]
-aptPkgs = ["python3", "python3-pip"]
+nixPkgs = ["nodejs_20", "python3"]
+aptPkgs = ["python3-pip"]
 
 [phases.install]
 cmds = ["npm install"]
