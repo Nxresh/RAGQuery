@@ -54,13 +54,19 @@ const app = express();
 const PORT = process.env.PORT || 5190;
 
 // Initialize PostgreSQL Connection Pool
-const pool = new pg.Pool({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'ragquery_db',
-  port: process.env.DB_PORT || 5432,
-});
+// Support Railway's DATABASE_URL or individual env vars for local dev
+const pool = process.env.DATABASE_URL
+  ? new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  })
+  : new pg.Pool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'password',
+    database: process.env.DB_NAME || 'ragquery_db',
+    port: process.env.DB_PORT || 5432,
+  });
 
 // Test Database Connection
 async function testDbConnection() {
