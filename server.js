@@ -25,6 +25,13 @@ const pdf = require('pdf-parse');
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { exec } from 'child_process';
 import util from 'util';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { parsePDFWithMetadata, parseDocxWithMetadata, parseTextWithMetadata, generateVersionId } from './services/pdfParser.js';
 import { logQuery, extractCitations } from './services/auditLogger.js';
 import { expandQuery, decomposeQuery, generateHypotheticalAnswer, stepBackQuery, analyzeQueryComplexity, transformQuery } from './services/queryTransformer.js';
@@ -209,6 +216,40 @@ function sanitizeInput(input) {
 // Health check
 app.get('/api/health', (_req, res) => {
   res.status(200).json({ status: 'ok', security: 'enterprise-jwt' });
+});
+
+// Debug endpoint for Railway deployment - check dist folder
+// NOTE: Using inline requires since fs/path may not be imported yet in module order
+
+app.get('/api/debug-dist', (_req, res) => {
+  const distPath = path.join(__dirname, 'dist');
+  const indexPath = path.join(distPath, 'index.html');
+
+  const result = {
+    __dirname,
+    distPath,
+    distExists: fs.existsSync(distPath),
+    indexExists: fs.existsSync(indexPath),
+    distContents: null,
+    cwd: process.cwd(),
+    cwdContents: null
+  };
+
+  if (result.distExists) {
+    try {
+      result.distContents = fs.readdirSync(distPath);
+    } catch (e) {
+      result.distContents = `Error: ${e.message}`;
+    }
+  }
+
+  try {
+    result.cwdContents = fs.readdirSync(process.cwd());
+  } catch (e) {
+    result.cwdContents = `Error: ${e.message}`;
+  }
+
+  res.json(result);
 });
 
 // ============================================================
@@ -2436,10 +2477,7 @@ app.post('/api/regenerate-visual', validateRequest('POST /api/regenerate-visual'
 // ============================================================
 // PRODUCTION: Serve Static Frontend
 // ============================================================
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// (path and __dirname already imported at top of file)
 
 // Serve static files from the dist directory (Vite build output)
 app.use(express.static(path.join(__dirname, 'dist')));
