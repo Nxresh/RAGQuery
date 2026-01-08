@@ -9,7 +9,7 @@ aptPkgs = ["python3-pip"]
 cmds = ["npm install"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = []
 
 [start]
 cmd = "node server.js"
