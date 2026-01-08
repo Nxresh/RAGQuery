@@ -804,31 +804,49 @@ ${c.chunkText}
    - DO NOT just answer from one source - integrate ALL sources
    - If sources have different perspectives, present both with citations` : '';
 
-        const synthesisPrompt = `You are an expert AI assistant tasked with answering questions based on provided context.
+        const synthesisPrompt = `You are an expert AI research assistant. Your task is to provide COMPREHENSIVE, DETAILED answers based on the provided document sources.
 
-**IMPORTANT INSTRUCTIONS:**
-1. **Formatting**:
-   - Use **H1 (#)** for the main title.
-   - Use **H2 (##)** for major sections.
-   - Use **Numbered Lists (1., 2., 3.)** for steps or key points.
-   - **Bold Keys**: Start list items with a bold key if applicable (e.g., **Key:** Value).
-2. **INLINE CITATIONS (CRITICAL)**:
-   - When citing information from the sources, use this format: **[Source X, p.Y]** or **[Source X]**
+**CRITICAL RESPONSE REQUIREMENTS:**
+
+1. **LENGTH & DEPTH (IMPORTANT)**:
+   - Provide THOROUGH, IN-DEPTH explanations - NOT short summaries
+   - Aim for at least 300-500 words in your response
+   - Explain the "what", "why", "how", and implications
+   - Include relevant details, examples, and context from the sources
+   - DO NOT be concise - be COMPREHENSIVE
+
+2. **STRUCTURE (MANDATORY)**:
+   - Start with a clear **# Main Title** (H1) summarizing the topic
+   - Use **## Section Headings** (H2) to organize your answer into logical parts
+   - Use **### Subsections** (H3) for detailed breakdowns if needed
+   - Use **numbered lists (1., 2., 3.)** for processes, steps, or key points
+   - Use **bullet points (-)** for related items or features
+   - Use **bold text** for key terms and important concepts
+
+3. **INLINE CITATIONS (CRITICAL)**:
+   - EVERY factual claim MUST have a citation: **[Source X, p.Y]** or **[Source X]**
    - Example: "The policy requires annual reviews [Source 1, p.5]"
-   - Every factual claim MUST have a citation to the relevant source
-   - Use the source number from the context sections below
-3. **Detail**: Provide a **detailed, comprehensive explanation**. Explain *why* and *how*.
-4. **Structure**:
-   - Start with a clear **H1 Title**.
-   - Break down the answer into clear **H2 Sections**.
-   - Use **Numbered Lists** for processes or itemized details.${multiSourceInstructions}
+   - Cite the specific source number from the context sections below
+   - If information comes from multiple sources, cite ALL of them
 
-**Context Sections from the documents (Hierarchical Retrieval):**
+4. **SOURCES SECTION (REQUIRED AT END)**:
+   After your main answer, include a "## Sources Used" section listing:
+   - Each source number, page (if available), and a brief description of what it contributed
+   - Example: "- **Source 1 (Page 5)**: Provided policy requirements for annual reviews"
+
+5. **QUALITY GUIDELINES**:
+   - Never say "the document says" without specifying WHICH source
+   - Explain complex concepts in accessible terms
+   - Connect ideas and show relationships between points
+   - If sources contain different perspectives, present ALL of them${multiSourceInstructions}
+
+**CONTEXT SECTIONS FROM YOUR KNOWLEDGE BASE:**
 ${topChunksText}
+${additionalContext}
 
-**User's Query:** ${query}
+**USER'S QUESTION:** ${query}
 
-**Your Answer (with inline citations from ALL sources):**`;
+**YOUR COMPREHENSIVE ANSWER (Remember: Be detailed, use headings, cite ALL sources):**`;
 
         console.log('[RAG] Generating synthesis with citations...');
         const synthesizedAnswer = await generateWithRetries(synthesisPrompt);
