@@ -479,7 +479,7 @@ export const securityHeaders = helmet({
         useDefaults: true,
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com"],
             styleSrc: [
                 "'self'",
                 "'unsafe-inline'",
