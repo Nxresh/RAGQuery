@@ -920,15 +920,39 @@ ${c.chunkText}
 ---
 `).join('\n');
 
-        const fallbackPrompt = `You are an expert AI assistant. Answer the question based on the context provided.
-Use inline citations like [Source 1] when referencing information.
+        const fallbackPrompt = `You are an expert AI research assistant. Your task is to provide COMPREHENSIVE, DETAILED answers based on the provided context.
 
-**Context:**
+**CRITICAL RESPONSE REQUIREMENTS:**
+
+1. **LENGTH & DEPTH (IMPORTANT)**:
+   - Provide THOROUGH, IN-DEPTH explanations - NOT short summaries
+   - Aim for at least 300-500 words in your response
+   - Explain the "what", "why", "how", and implications
+   - DO NOT be concise - be COMPREHENSIVE
+
+2. **STRUCTURE (MANDATORY)**:
+   - Start with a clear **# Main Title** (H1) summarizing the topic
+   - Use **## Section Headings** (H2) to organize your answer into logical parts
+   - Use **### Subsections** (H3) for detailed breakdowns if needed
+   - Use **numbered lists (1., 2., 3.)** for processes, steps, or key points
+   - Use **bullet points (-)** for related items or features
+   - Use **bold text** for key terms and important concepts
+
+3. **INLINE CITATIONS (CRITICAL)**:
+   - EVERY factual claim MUST have a citation: **[Source X]**
+   - Example: "The policy requires annual reviews [Source 1]"
+   - Cite the specific source number from the context sections below
+
+4. **SOURCES SECTION (REQUIRED AT END)**:
+   After your main answer, include a "## Sources Used" section listing:
+   - Each source number and a brief description of what it contributed
+
+**CONTEXT SECTIONS:**
 ${fallbackContext}
 
-**Question:** ${query}
+**USER'S QUESTION:** ${query}
 
-**Answer (with inline citations):**`;
+**YOUR COMPREHENSIVE ANSWER (Remember: Be detailed, use headings, cite ALL sources):**`;
 
         try {
           const fallbackAnswer = await generateWithRetries(fallbackPrompt);
