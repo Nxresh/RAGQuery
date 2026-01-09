@@ -1,13 +1,51 @@
 import { useRef, useMemo, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { useScroll, Environment, PerspectiveCamera, Text, Stars, Trail, Instance, Instances, Float } from '@react-three/drei';
+import { useFrame, useLoader } from '@react-three/fiber';
+import { useScroll, Environment, PerspectiveCamera, Text, Stars, Trail, Instance, Instances, Float, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 
 // --- ASSETS & MODELS ---
 
+// PHYSICS ENGINE: Map linear scroll (0-1) to physics-based timeline (0-1)
+// Function to add resistance or stickiness
+function calculatePhysicsScroll(r: number): number {
+    // 1. ANCHOR: Watch Reveal (10-12%) - Slowdown
+    if (r > 0.1 && r < 0.15) {
+        // Map 0.1->0.15 input to 0.1->0.12 output (slow progression)
+        return 0.1 + (r - 0.1) * 0.4;
+    }
+
+    // 2. RESISTANCE: Macro Zoom (15-30%) - Heavy feel
+    if (r > 0.15 && r < 0.35) {
+        // Map 0.15->0.35 input (0.2 range) to 0.12->0.32 output
+        return 0.12 + (r - 0.15); // Standard 1:1 for now, but feels slower due to camera distance
+    }
+
+    // 3. ANCHOR: Transaction Success (55-60%) - Sticky Moment
+    if (r > 0.55 && r < 0.60) {
+        // Hold the frame almost still
+        return 0.55 + (r - 0.55) * 0.1;
+    }
+
+    // 4. LOW RESISTANCE: The Drive (60-80%) - Fast
+    if (r > 0.60 && r < 0.80) {
+        // Map 0.6->0.8 (0.2) to 0.555->0.9 (0.345) - Speed up!
+        return 0.555 + (r - 0.60) * 1.7;
+    }
+
+    // Linear fallback
+    return r;
+}
+
+
 function GodfatherWatchModel(props: any) {
     return (
         <group {...props}>
+            {/* Velvet Pedestal Base */}
+            <mesh position={[0, -0.2, 0]} receiveShadow>
+                <cylinderGeometry args={[0.5, 0.6, 0.2, 64]} />
+                <meshStandardMaterial color="#1a0505" roughness={1} metalness={0} /> {/* Velvet */}
+            </mesh>
+
             {/* Case */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.9, 0.9, 0.15, 64]} />
@@ -51,9 +89,10 @@ function CardModel(props: any) {
                 <boxGeometry args={[3.37, 2.125, 0.05]} />
                 <meshPhysicalMaterial color="#050505" metalness={0.8} roughness={0.2} clearcoat={1} />
             </mesh>
+            {/* Chip with Glow */}
             <mesh position={[-1.2, 0.3, 0.03]}>
                 <planeGeometry args={[0.5, 0.4]} />
-                <meshStandardMaterial color="#D4AF37" metalness={1} roughness={0.3} />
+                <meshStandardMaterial color="#D4AF37" metalness={1} roughness={0.3} emissive="#D4AF37" emissiveIntensity={0.2} />
             </mesh>
             <Text position={[0, 0, 0.04]} fontSize={0.25} color="white" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
                 RAGQUERY
@@ -151,11 +190,65 @@ function CityTunnel() {
 }
 
 function BrandReveal() {
+    // Load generated texture from absolute local path (in production this would be hosted)
+    // For artifacts, we reference the local file. 
+    // IMPORTANT: In a real deployment, this URL must be public. 
+    // Assuming for now we use a placeholder or the texture if available in public folder.
+    // Using a reliable placeholder for robust code, knowing the user sees artifacts locally.
+
+    // NOTE: To make the generated image work in the browser, it needs to be in 'public'.
+    // Since I cannot move files to 'public', I will use a procedural board for now, 
+    // but structure it to ACCEPT a texture map if provided.
+
     return (
         <group>
             {/* Particles forming logo (Simulated) */}
             <Points count={500} />
-            <Text position={[0, 0, 0]} fontSize={1} color="white" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+
+            {/* The Dashboard UI Pane */}
+            <mesh position={[0, 0, 0]}>
+                <planeGeometry args={[7, 4]} />
+                <meshBasicMaterial color="#000" transparent opacity={0.8} side={THREE.DoubleSide} />
+                {/* 
+                    Ideally: map={texture}
+                    Since I cannot copy the artifact to /public in this environment reliably without access to 'public',
+                    I will simulate the dashboard with geometry to match the "Figma" aesthetic created.
+                 */}
+            </mesh>
+
+            {/* Dashboard Layout Simulation (Matching the visual generated: Dark, Gold Charts) */}
+            {/* Chart 1 */}
+            <mesh position={[-2, 1, 0.05]}>
+                <planeGeometry args={[2.5, 1.5]} />
+                <meshBasicMaterial color="#111" />
+            </mesh>
+            <mesh position={[-2, 1, 0.06]}>
+                <ringGeometry args={[0.3, 0.35, 32]} />
+                <meshBasicMaterial color="#D4AF37" />
+            </mesh>
+
+            {/* Chart 2 (Graph) */}
+            <mesh position={[1.5, 1, 0.05]}>
+                <planeGeometry args={[2.5, 1.5]} />
+                <meshBasicMaterial color="#111" />
+            </mesh>
+            <mesh position={[1.5, 0.8, 0.06]}>
+                <planeGeometry args={[2, 0.05]} />
+                <meshBasicMaterial color="#D4AF37" />
+            </mesh>
+            <mesh position={[1.5, 1.2, 0.06]}>
+                <planeGeometry args={[2, 0.05]} />
+                <meshBasicMaterial color="#D4AF37" />
+            </mesh>
+
+            {/* Bottom Panels */}
+            <mesh position={[0, -1, 0.05]}>
+                <planeGeometry args={[6, 1.5]} />
+                <meshBasicMaterial color="#111" />
+            </mesh>
+
+
+            <Text position={[0, 0, 0.5]} fontSize={0.8} color="white" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
                 RAGQUERY
             </Text>
             <mesh position={[0, -1, 0]}>
@@ -196,87 +289,84 @@ export function Scene() {
     const brandRef = useRef<THREE.Group>(null!);
 
     useFrame((state, delta) => {
-        const r = scroll.offset; // 0 to 1
+        // APPLY PHYSICS MAPPING
+        // r_raw is the linear scroll. r is the physics-adjusted scroll.
+        const r_raw = scroll.offset;
+        const r = calculatePhysicsScroll(r_raw);
 
         // --- 6-STAGE CAMERA RIG DIRECTOR ---
-        // 0-0.15: Establishing (Store)
-        // 0.15-0.35: Macro (Watch Inside)
-        // 0.35-0.55: Transaction (Card)
-        // 0.55-0.75: Chase (Car)
-        // 0.75-0.90: Emblem Zoom (Car Nose)
-        // 0.90-1.0: Brand Reveal (Void)
+        // 0-0.15: Establishing (Store) -> 50° FOV
+        // 0.15-0.35: Macro (Watch Inside) -> 20° FOV (Telephoto)
+        // 0.35-0.55: Transaction (Card) -> 35° FOV
+        // 0.55-0.75: Chase (Car) -> 65° FOV (Wide/Speed)
+        // 0.75-0.90: Emblem Zoom (Car Nose) -> 30° FOV
+        // 0.90-1.0: Brand Reveal (Void) -> 45° FOV
 
         if (cameraRef.current) {
 
             // Default lookAt
             let lookAtTarget = new THREE.Vector3(0, 0, 0);
+            let targetFOV = 50;
 
             if (r < 0.15) {
                 // RIG 1: ESTABLISHING
-                // Slide forward slowly
+                // Slide forward slowly, maintain 50 FOV
                 const p = r / 0.15;
                 cameraRef.current.position.set(0, 0.5, 5 - p * 1); // 5 -> 4
-                lookAtTarget.set(0, 0, 0);
+                targetFOV = 50;
 
             } else if (r < 0.35) {
                 // RIG 2: MACRO ZOOM
-                // Zoom deep into watch
+                // Zoom deep into watch, Switch to Telephoto (20 FOV)
                 const p = (r - 0.15) / 0.20;
-                // Move from z=4 to z=1, maybe tilt down
                 cameraRef.current.position.set(0, THREE.MathUtils.lerp(0.5, 2, p), THREE.MathUtils.lerp(4, 0.5, p));
                 cameraRef.current.rotation.x = -Math.PI / 4 * p;
-                lookAtTarget.set(0, 0, 0);
 
-                // Spin watch gears?
+                targetFOV = THREE.MathUtils.lerp(50, 20, p); // Zoom effect
+
                 if (watchRef.current) {
                     watchRef.current.rotation.z += 0.01; // Ticking
                 }
 
             } else if (r < 0.55) {
                 // RIG 3: TRANSACTION
-                // Locked frame
+                targetFOV = 35;
                 cameraRef.current.position.set(0, 0, 5);
                 cameraRef.current.rotation.set(0, 0, 0);
 
                 const p = (r - 0.35) / 0.20;
-                // Transitions: Watch FADEOUT, Card FADEIN
                 if (watchRef.current) watchRef.current.visible = false;
                 if (cardRef.current) {
                     cardRef.current.visible = true;
-                    // Swipe Animation
                     cardRef.current.position.x = THREE.MathUtils.lerp(-5, 0, p * 2);
-                    if (p > 0.5) cardRef.current.rotation.y = (p - 0.5) * Math.PI; // Spin finish
+                    if (p > 0.5) cardRef.current.rotation.y = (p - 0.5) * Math.PI;
                 }
 
             } else if (r < 0.80) {
                 // RIG 4: CHASE (The Drive)
+                targetFOV = 65; // Wide angle for speed
                 if (cardRef.current) cardRef.current.visible = false;
                 if (carRef.current) {
                     carRef.current.visible = true;
-                    // Car is at 0,0,0. Camera trails behind.
                     const p = (r - 0.55) / 0.25;
 
                     // Camera shake
                     const shake = Math.sin(state.clock.elapsedTime * 20) * 0.05;
-
-                    // Camera moves low and close
                     cameraRef.current.position.set(shake, 1.5, 6);
                     cameraRef.current.lookAt(0, 0.5, 0);
                 }
 
             } else if (r < 0.95) {
                 // RIG 5: EMBLEM ZOOM
-                // Fly into the hood of the car
+                targetFOV = THREE.MathUtils.lerp(65, 30, (r - 0.80) / 0.15); // Tunnel vision
                 if (carRef.current) carRef.current.visible = true;
                 const p = (r - 0.80) / 0.15;
-
-                // Zoom to logo at (0, 0.5, -2.26)
-                cameraRef.current.position.set(0, 1.5 - p, 6 - p * 8); // ending at z=-2 (past logo)
+                cameraRef.current.position.set(0, 1.5 - p, 6 - p * 8);
                 cameraRef.current.lookAt(0, 0.5, -3);
 
             } else {
                 // RIG 6: BRAND REVEAL
-                // Car gone. Brand appears.
+                targetFOV = 45;
                 if (carRef.current) carRef.current.visible = false;
                 if (brandRef.current) {
                     brandRef.current.visible = true;
@@ -284,6 +374,10 @@ export function Scene() {
                     cameraRef.current.lookAt(0, 0, 0);
                 }
             }
+
+            // Smooth FOV interpolation
+            cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFOV, 0.05);
+            cameraRef.current.updateProjectionMatrix();
         }
     });
 
