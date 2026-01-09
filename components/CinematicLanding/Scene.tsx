@@ -2,8 +2,24 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Cloud, Line, PointMaterial, Points } from '@react-three/drei';
 import * as THREE from 'three';
-import * as random from 'maath/random';
 import { useState } from 'react';
+
+// Function to generate random points in a sphere (Replaces maath)
+function inSphere(buffer: Float32Array, options: { radius: number }) {
+    const { radius } = options;
+    for (let i = 0; i < buffer.length; i += 3) {
+        const u = Math.random();
+        const v = Math.random();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+        const r = Math.cbrt(Math.random()) * radius;
+        const sinPhi = Math.sin(phi);
+        buffer[i] = r * sinPhi * Math.cos(theta);
+        buffer[i + 1] = r * sinPhi * Math.sin(theta);
+        buffer[i + 2] = r * Math.cos(phi);
+    }
+    return buffer;
+}
 
 // --- HIGH-FIDELITY PROCEDURAL ASSETS ---
 
@@ -127,7 +143,7 @@ function CardModel() {
 
 function NeuralNexusModel() {
     // Procedural Neural Network Visualization
-    const [sphere] = useState(() => random.inSphere(new Float32Array(300), { radius: 1.5 }));
+    const [sphere] = useState(() => inSphere(new Float32Array(300), { radius: 1.5 }));
 
     return (
         <group>
