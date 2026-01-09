@@ -13,97 +13,89 @@ const Section = ({ children, className = "" }: { children: React.ReactNode; clas
 export function Overlay({ onEnter }: OverlayProps) {
     return (
         <div className="w-full text-white font-light tracking-wide pointer-events-none">
-            {/* Phase 1: OPENING TEXT (0 - 15%) */}
+            {/* Scene 1: Void Entry (Scroll 0-0.2) */}
             <Section className="items-center text-center">
                 <motion.div
                     initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                    className="max-w-4xl"
+                    whileInView={{ opacity: 1 }} // Fade in
+                    transition={{ duration: 1.5 }}
                 >
-                    <h2 className="text-4xl md:text-6xl text-white mb-6 font-serif tracking-widest" style={{ fontFamily: 'Cinzel, serif' }}>
+                    <h2 className="text-3xl md:text-5xl font-extralight tracking-widest text-white mb-4">
                         Time is not measured.
                     </h2>
-                    <p className="text-xl text-neutral-500 font-light tracking-[0.2em] uppercase">
-                        It is ruled.
+                    <p className="text-xl md:text-2xl text-neutral-400 font-light tracking-wide">
+                        It is experienced.
                     </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Watch Model (15% - 35%) */}
-            <div className="h-[25vh]" />
-
-            {/* Phase 2: ENGINEERING TEXT (40% - 50%) - Fits in gap after Watch, before Card */}
-            <Section className="items-end text-right pr-12 md:pr-32">
+            {/* Scene 2: Watch Zoom (Scroll 0.2-0.5) */}
+            <Section className="items-end text-right pr-10 md:pr-20">
                 <motion.div
-                    initial={{ opacity: 0, x: 50 }}
+                    initial={{ opacity: 0, x: 20 }}
                     whileInView={{ opacity: 1, x: 0 }}
                     transition={{ duration: 1 }}
                 >
-                    <h3 className="text-3xl md:text-5xl text-white mb-2 font-serif" style={{ fontFamily: 'Cinzel, serif' }}>
-                        Precision Engineering
-                    </h3>
-                    <div className="h-1 w-24 bg-neutral-700 ml-auto mb-4" />
-                    <p className="text-neutral-400 font-mono text-sm tracking-widest">
-                        CALIBER 9000 // SILENT OPERATION
+                    <h3 className="text-2xl md:text-4xl text-yellow-100 font-light mb-2">Precision Engineering</h3>
+                    <p className="text-sm md:text-base text-neutral-400 max-w-xs ml-auto">
+                        Every detail crafted for absolute perfection.
                     </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Card Model (50% - 70%) */}
-            <div className="h-[20vh]" />
-
-            {/* Phase 3: ACCESS TEXT (75% - 85%) - After Card */}
-            <Section className="items-start text-left pl-12 md:pl-32">
+            {/* Scene 3: Card / Mastercard (Scroll 0.5-0.75) */}
+            <Section className="items-start text-left pl-10 md:pl-20">
                 <motion.div
-                    initial={{ opacity: 0, x: -50 }}
+                    initial={{ opacity: 0, x: -20 }}
                     whileInView={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 1 }}
+                    transition={{ duration: 0.8 }}
                 >
-                    <h2 className="text-5xl md:text-7xl text-white font-serif mb-2" style={{ fontFamily: 'Cinzel, serif' }}>
+                    <h2 className="text-4xl md:text-6xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-yellow-100 to-yellow-600">
                         Global Access
                     </h2>
-                    <p className="text-neutral-400 uppercase tracking-[0.3em] text-xs md:text-sm border-l-2 border-white pl-4">
-                        No Borders. No Limits.
+                    <p className="text-neutral-400 uppercase tracking-[0.2em] text-sm">
+                        Zero Friction Transaction
                     </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Spiral/Approch (85%+) */}
-            <div className="h-[30vh]" />
+            {/* Scene 4: Neural Nexus (Scroll 0.75-1.0) */}
+            <Section className="items-center text-center">
+                <motion.h2
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 1 }}
+                    className="text-5xl md:text-8xl font-black tracking-tighter text-blue-100 drop-shadow-[0_0_15px_rgba(0,255,255,0.5)]"
+                >
+                    INFINITE<br />REASONING
+                </motion.h2>
+            </Section>
 
-            {/* Phase 4: FINAL REVEAL (90% - 100%) */}
+            {/* Spacer for transition */}
+            <div className="h-[50vh]" />
+
+            {/* Final Reveal & Action */}
             <Section className="items-center text-center h-[100vh]">
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 2, ease: "circOut" }}
-                    className="flex flex-col items-center gap-10"
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    transition={{ duration: 1.5 }}
+                    className="flex flex-col items-center gap-8 pointer-events-auto bg-black/50 p-12 rounded-3xl backdrop-blur-sm border border-white/10"
                 >
-                    {/* Logo / Brand */}
-                    <div className="relative">
-                        <h1 className="text-7xl md:text-9xl font-bold tracking-tighter text-white z-10 relative">
-                            RAGQUERY
-                        </h1>
-                        <div className="absolute -inset-10 bg-white/5 blur-3xl -z-10 rounded-full" />
-                    </div>
-
-                    <p className="text-xl md:text-2xl text-neutral-400 font-serif italic tracking-wide">
-                        "Power belongs to those who control time and information."
+                    <h1 className="text-6xl md:text-9xl font-bold tracking-tighter mb-2 text-white">
+                        RAG<span className="text-blue-500">QUERY</span>
+                    </h1>
+                    <p className="text-xl md:text-2xl text-neutral-300 max-w-2xl text-center leading-relaxed">
+                        The worlds most advanced AI. <br />
+                        Your new reality starts here.
                     </p>
 
                     <button
                         onClick={onEnter}
-                        className="mt-12 px-16 py-5 bg-white text-black text-lg font-bold tracking-[0.25em] hover:bg-neutral-200 transition-all duration-500 uppercase border border-white"
-                        style={{ fontFamily: 'Cinzel, serif' }}
+                        className="mt-8 px-12 py-4 bg-white text-black text-lg font-bold tracking-widest hover:bg-blue-500 hover:text-white transition-all duration-300 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                     >
-                        Enter System
+                        ENTER EXPERIENCE
                     </button>
-
-                    <div className="text-xs text-neutral-600 font-mono mt-8">
-                        ENCRYPTED CONNECTION ESTABLISHED
-                    </div>
                 </motion.div>
             </Section>
         </div>
