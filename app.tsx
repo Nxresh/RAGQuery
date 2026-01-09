@@ -54,6 +54,14 @@ function App() {
     // Listen for hash changes
     window.addEventListener('hashchange', handleHashChange);
 
+    // If Firebase is not configured, skip auth state listener
+    if (!auth) {
+      setLoading(false);
+      return () => {
+        window.removeEventListener('hashchange', handleHashChange);
+      };
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -157,7 +165,7 @@ function App() {
               Resend Verification Email
             </Button>
             <Button
-              onClick={() => auth.signOut()}
+              onClick={() => auth?.signOut()}
               variant="ghost"
               className="w-full"
             >
@@ -169,7 +177,7 @@ function App() {
     );
   }
 
-  return <NotebookLMLayout user={user} onSignOut={() => auth.signOut()} />;
+  return <NotebookLMLayout user={user} onSignOut={() => auth?.signOut()} />;
 }
 
 export default App;

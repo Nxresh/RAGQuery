@@ -10,6 +10,10 @@ export const FirebaseLogin: React.FC = () => {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth) {
+            setError('Firebase not configured');
+            return;
+        }
         setError('');
         setIsLoading(true);
 

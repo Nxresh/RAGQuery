@@ -34,6 +34,10 @@ export const FirebaseSignup: React.FC = () => {
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!auth) {
+            setError('Firebase not configured');
+            return;
+        }
         setError('');
 
         if (formData.password !== formData.confirmPassword) {
