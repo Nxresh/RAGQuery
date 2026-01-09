@@ -13,29 +13,28 @@ const Section = ({ children, className = "" }: { children: React.ReactNode; clas
 export function Overlay({ onEnter }: OverlayProps) {
     return (
         <div className="w-full text-white font-light tracking-wide pointer-events-none">
-            {/* Phase 1: OPENING TEXT (0 - 15%) */}
+            {/* Phase 1: TIME (0 - 15%) */}
             <Section className="items-center text-center">
                 <motion.div
                     initial={{ opacity: 0 }}
                     whileInView={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                    className="max-w-4xl"
+                    transition={{ duration: 1.5 }}
                 >
                     <h2 className="text-4xl md:text-6xl text-white mb-6 font-serif tracking-widest" style={{ fontFamily: 'Cinzel, serif' }}>
                         Time is not measured.
                     </h2>
                     <p className="text-xl text-neutral-500 font-light tracking-[0.2em] uppercase">
-                        It is ruled.
+                        It is experienced.
                     </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Watch Model (15% - 35%) */}
-            <div className="h-[25vh]" />
+            {/* SPACER (15-35%) - Watch Macro - No Text */}
+            <div className="h-[20vh]" />
 
-            {/* Phase 2: ENGINEERING TEXT (40% - 50%) - Fits in gap after Watch, before Card */}
-            <Section className="items-end text-right pr-12 md:pr-32">
+            {/* Phase 2: PRECISION (35%) - Short text between Watch and Card */}
+            <Section className="items-end text-right pr-12 md:pr-32 h-[50vh]">
                 <motion.div
                     initial={{ opacity: 0, x: 50 }}
                     whileInView={{ opacity: 1, x: 0 }}
@@ -45,17 +44,11 @@ export function Overlay({ onEnter }: OverlayProps) {
                         Precision Engineering
                     </h3>
                     <div className="h-1 w-24 bg-neutral-700 ml-auto mb-4" />
-                    <p className="text-neutral-400 font-mono text-sm tracking-widest">
-                        CALIBER 9000 // SILENT OPERATION
-                    </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Card Model (50% - 70%) */}
-            <div className="h-[20vh]" />
-
-            {/* Phase 3: ACCESS TEXT (75% - 85%) - After Card */}
-            <Section className="items-start text-left pl-12 md:pl-32">
+            {/* Phase 3: ACCESS (55%) - During Card Swipe */}
+            <Section className="items-start text-left pl-12 md:pl-32 h-[50vh]">
                 <motion.div
                     initial={{ opacity: 0, x: -50 }}
                     whileInView={{ opacity: 1, x: 0 }}
@@ -65,15 +58,29 @@ export function Overlay({ onEnter }: OverlayProps) {
                         Global Access
                     </h2>
                     <p className="text-neutral-400 uppercase tracking-[0.3em] text-xs md:text-sm border-l-2 border-white pl-4">
-                        No Borders. No Limits.
+                        Seamless. Limitless.
                     </p>
                 </motion.div>
             </Section>
 
-            {/* SPACER for Spiral/Approch (85%+) */}
-            <div className="h-[30vh]" />
+            {/* Phase 4: POWER / DRIVE (70%) - During Car Chase */}
+            <Section className="items-center text-center h-[100vh]">
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5 }}
+                    className="mix-blend-overlay"
+                >
+                    <h2 className="text-8xl md:text-[10rem] text-white font-black italic tracking-tighter opacity-20" style={{ fontFamily: 'Inter, sans-serif' }}>
+                        POWER
+                    </h2>
+                </motion.div>
+            </Section>
 
-            {/* Phase 4: FINAL REVEAL (90% - 100%) */}
+            {/* Phase 5: EMBLEM ZOOM (80% - 95%) - Spacer mostly */}
+            <div className="h-[20vh]" />
+
+            {/* Phase 6: BRAND REVEAL / CTA (95%+) */}
             <Section className="items-center text-center h-[100vh]">
                 <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -81,7 +88,6 @@ export function Overlay({ onEnter }: OverlayProps) {
                     transition={{ duration: 2, ease: "circOut" }}
                     className="flex flex-col items-center gap-10"
                 >
-                    {/* Logo / Brand */}
                     <div className="relative">
                         <h1 className="text-7xl md:text-9xl font-bold tracking-tighter text-white z-10 relative">
                             RAGQUERY
@@ -90,7 +96,7 @@ export function Overlay({ onEnter }: OverlayProps) {
                     </div>
 
                     <p className="text-xl md:text-2xl text-neutral-400 font-serif italic tracking-wide">
-                        "Power belongs to those who control time and information."
+                        "Join the Future."
                     </p>
 
                     <button

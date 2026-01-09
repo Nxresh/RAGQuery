@@ -1,69 +1,42 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useScroll, Environment, Sparkles, PerspectiveCamera, Text, Stars, Float, Torus, Cylinder, Box, Plane } from '@react-three/drei';
+import { useScroll, Environment, PerspectiveCamera, Text, Stars, Trail, Instance, Instances, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
-// --- ASSETS ---
+// --- ASSETS & MODELS ---
 
-function GodfatherWatchModel() {
+function GodfatherWatchModel(props: any) {
     return (
-        <group rotation={[Math.PI / 2, 0, 0]} scale={0.9}>
-            {/* Case: Obsidian / Matte Black */}
+        <group {...props}>
+            {/* Case */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.9, 0.9, 0.15, 64]} />
-                <meshStandardMaterial color="#0a0a0a" metalness={0.8} roughness={0.7} envMapIntensity={1} />
+                <meshStandardMaterial color="#0a0a0a" metalness={0.9} roughness={0.4} envMapIntensity={1.5} />
             </mesh>
-
-            {/* Bezel: Polished Black Ceramic */}
+            {/* Ring */}
             <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-                <torusGeometry args={[0.9, 0.04, 32, 64]} />
-                <meshStandardMaterial color="#000" metalness={1} roughness={0.1} />
+                <torusGeometry args={[0.82, 0.03, 32, 64]} />
+                <meshStandardMaterial color="#D4AF37" metalness={1} roughness={0.1} />
             </mesh>
-
-            {/* Inner Ring: Rose Gold */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-                <torusGeometry args={[0.82, 0.015, 32, 64]} />
-                <meshStandardMaterial color="#D4AF37" metalness={1} roughness={0.2} />
-            </mesh>
-
-            {/* Face: Skeleton Hierarchy */}
+            {/* Mechanics */}
             <group position={[0, -0.05, 0]}>
-                {/* Mechanism Plate */}
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
-                    <cylinderGeometry args={[0.85, 0.85, 0.02, 64]} />
-                    <meshStandardMaterial color="#111" metalness={0.9} roughness={0.5} />
-                </mesh>
-
-                {/* The "Rose" / Flower Mechanism Hint */}
-                <group position={[0, 0.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                    <mesh>
-                        <torusKnotGeometry args={[0.25, 0.08, 64, 8, 2, 3]} />
-                        <meshStandardMaterial color="#333" metalness={1} roughness={0.4} />
-                    </mesh>
-                    {/* Gold center */}
-                    <mesh>
-                        <sphereGeometry args={[0.1]} />
-                        <meshStandardMaterial color="#D4AF37" metalness={1} />
-                    </mesh>
-                </group>
-
-                {/* Roman Numeral Pillars (Abstract) */}
-                {[0, 1, 2, 3].map(i => (
-                    <mesh key={i} position={[0.6 * Math.cos(i * Math.PI / 2), 0.1, 0.6 * Math.sin(i * Math.PI / 2)]} rotation={[Math.PI / 2, 0, 0]}>
-                        <boxGeometry args={[0.05, 0.2, 0.05]} />
-                        <meshStandardMaterial color="#D4AF37" metalness={1} />
+                {/* Internal Gears (Abstract) */}
+                {[0, 1, 2, 3, 4].map(i => (
+                    <mesh key={i} position={[Math.cos(i) * 0.4, 0.05, Math.sin(i) * 0.4]} rotation={[Math.PI / 2, 0, i]}>
+                        <cylinderGeometry args={[0.15, 0.15, 0.05, 16]} />
+                        <meshStandardMaterial color={i % 2 === 0 ? "#D4AF37" : "#333"} metalness={1} roughness={0.3} />
                     </mesh>
                 ))}
-            </group>
-
-            {/* Hands (Gold) */}
-            <group position={[0, 0.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <mesh rotation={[0, 0, 0.5]}>
-                    <boxGeometry args={[0.04, 0.6, 0.02]} />
-                    <meshStandardMaterial color="#D4AF37" metalness={1} />
+                {/* Main Bridge */}
+                <mesh position={[0, 0.05, 0]} rotation={[0, 0, Math.PI / 4]}>
+                    <boxGeometry args={[1.2, 0.2, 0.05]} />
+                    <meshStandardMaterial color="#111" metalness={0.8} />
                 </mesh>
-                <mesh rotation={[0, 0, 2]}>
-                    <boxGeometry args={[0.06, 0.4, 0.02]} />
+            </group>
+            {/* Hands */}
+            <group position={[0, 0.15, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <mesh rotation={[0, 0, 1]}>
+                    <boxGeometry args={[0.04, 0.7, 0.01]} />
                     <meshStandardMaterial color="#D4AF37" metalness={1} />
                 </mesh>
             </group>
@@ -71,287 +44,275 @@ function GodfatherWatchModel() {
     );
 }
 
-function CardModel() {
+function CardModel(props: any) {
     return (
-        <group>
-            {/* Card Body: Matte Obsidian */}
+        <group {...props}>
             <mesh>
                 <boxGeometry args={[3.37, 2.125, 0.05]} />
-                <meshPhysicalMaterial
-                    color="#050505"
-                    metalness={0.6}
-                    roughness={0.4}
-                    clearcoat={0.5}
-                />
+                <meshPhysicalMaterial color="#050505" metalness={0.8} roughness={0.2} clearcoat={1} />
             </mesh>
-
-            {/* Chip: Gold */}
             <mesh position={[-1.2, 0.3, 0.03]}>
                 <planeGeometry args={[0.5, 0.4]} />
                 <meshStandardMaterial color="#D4AF37" metalness={1} roughness={0.3} />
             </mesh>
-
-            {/* Text */}
-            <Text
-                position={[0, 0, 0.04]}
-                fontSize={0.28}
-                color="white"
-                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-                anchorX="center"
-                anchorY="middle"
-                letterSpacing={0.05}
-            >
+            <Text position={[0, 0, 0.04]} fontSize={0.25} color="white" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
                 RAGQUERY
             </Text>
-            <Text
-                position={[1.1, -0.7, 0.04]}
-                fontSize={0.12}
-                color="#555"
-                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-                anchorX="right"
-            >
+            <Text position={[1.1, -0.7, 0.04]} fontSize={0.15} color="#aaa" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff" anchorX="right">
                 WORLD ACCESS
             </Text>
         </group>
     );
 }
 
-function MechanicalSpiral() {
-    const groupRef = useRef<THREE.Group>(null!);
+function HyperCarModel(props: any) {
+    // Abstract Low-Poly "Cyber Car"
+    return (
+        <group {...props}>
+            {/* Body */}
+            <mesh position={[0, 0.5, 0]}>
+                <boxGeometry args={[2, 0.8, 4.5]} />
+                <meshPhysicalMaterial color="#111" metalness={1} roughness={0.1} clearcoat={1} clearcoatRoughness={0} />
+            </mesh>
+            {/* Cabin */}
+            <mesh position={[0, 1, -0.5]}>
+                <boxGeometry args={[1.6, 0.6, 2.5]} />
+                <meshStandardMaterial color="#000" metalness={1} roughness={0} />
+            </mesh>
+            {/* Wheels */}
+            <mesh position={[1, 0.4, 1.5]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.4, 0.4, 0.3, 32]} />
+                <meshStandardMaterial color="#333" />
+            </mesh>
+            <mesh position={[-1, 0.4, 1.5]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.4, 0.4, 0.3, 32]} />
+                <meshStandardMaterial color="#333" />
+            </mesh>
+            <mesh position={[1, 0.4, -1.5]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.4, 0.4, 0.3, 32]} />
+                <meshStandardMaterial color="#333" />
+            </mesh>
+            <mesh position={[-1, 0.4, -1.5]} rotation={[0, 0, Math.PI / 2]}>
+                <cylinderGeometry args={[0.4, 0.4, 0.3, 32]} />
+                <meshStandardMaterial color="#333" />
+            </mesh>
+            {/* Rear Lights (Trails) */}
+            <mesh position={[0, 0.6, 2.26]}>
+                <boxGeometry args={[1.8, 0.1, 0.1]} />
+                <meshBasicMaterial color="#ff0000" toneMapped={false} />
+            </mesh>
+            {/* Emblem (Zoom Target) */}
+            <mesh position={[0, 0.5, -2.26]}>
+                <boxGeometry args={[0.2, 0.2, 0.05]} />
+                <meshBasicMaterial color="#D4AF37" toneMapped={false} />
+            </mesh>
+        </group>
+    );
+}
 
-    useFrame((state) => {
-        if (groupRef.current) {
-            groupRef.current.rotation.z -= 0.002; // Slow rotation
+function CityTunnel() {
+    // Instanced boxes creating a tunnel of light
+    const count = 40;
+    const items = useMemo(() => {
+        const arr = [];
+        for (let i = 0; i < count; i++) {
+            const x = (Math.random() - 0.5) * 30; // Wide spread
+            const y = Math.random() * 10;
+            const z = -i * 5; // Deep tunnel
+            const scale = [Math.random() * 0.5 + 0.1, Math.random() * 5 + 1, Math.random() * 0.5 + 0.1];
+            arr.push({ pos: [x > 0 ? x + 5 : x - 5, y, z], scale }); // Leave middle open
+        }
+        return arr;
+    }, []);
+
+    const tunnelRef = useRef<THREE.Group>(null!);
+    useFrame((_, delta) => {
+        if (tunnelRef.current) {
+            tunnelRef.current.position.z += delta * 20; // Fast movement
+            if (tunnelRef.current.position.z > 200) tunnelRef.current.position.z = 0;
         }
     });
 
-    // Generate heavier spiral tubes
-    const points = useMemo(() => {
-        const p = [];
-        for (let i = 0; i < 150; i++) {
-            const t = i / 8;
-            const r = 3 + i * 0.1;
-            const x = Math.cos(t * 2) * r;
-            const y = Math.sin(t * 2) * r;
-            const z = -i * 0.8;
-            p.push(new THREE.Vector3(x, y, z));
-        }
-        return p;
-    }, []);
-    const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
-
     return (
-        <group ref={groupRef}>
-            <mesh>
-                <tubeGeometry args={[curve, 100, 0.1, 8, false]} />
-                <meshStandardMaterial color="#222" metalness={0.9} roughness={0.4} />
-            </mesh>
-            {/* Secondary Rail */}
-            <mesh rotation={[0, 0, Math.PI]}>
-                <tubeGeometry args={[curve, 100, 0.05, 8, false]} />
-                <meshStandardMaterial color="#444" metalness={0.8} roughness={0.5} />
+        <group ref={tunnelRef} position={[0, -5, -100]}>
+            {items.map((it, i) => (
+                <mesh key={i} position={it.pos as any} scale={it.scale as any}>
+                    <boxGeometry />
+                    <meshBasicMaterial color={i % 3 === 0 ? "#ff0000" : "#ffffff"} />
+                </mesh>
+            ))}
+            {/* Road Surface */}
+            <mesh position={[0, 0, 50]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[20, 300]} />
+                <meshStandardMaterial color="#111" metalness={0.8} roughness={0.2} />
             </mesh>
         </group>
     );
 }
 
-function RAGBoardModel() {
+function BrandReveal() {
     return (
         <group>
-            {/* Main Board Background */}
-            <mesh>
-                <planeGeometry args={[12, 7]} />
-                <meshPhysicalMaterial
-                    color="#1a1c20"
-                    transparent
-                    opacity={0.9}
-                    metalness={0.5}
-                    roughness={0.2}
-                    clearcoat={1}
-                />
-            </mesh>
-
-            {/* Grid Layout Visualization */}
-
-            {/* Left Panel: Inputs */}
-            <mesh position={[-4, 0, 0.1]}>
-                <planeGeometry args={[3, 6]} />
-                <meshStandardMaterial color="#25282c" />
-            </mesh>
-            {/* Lines representing code/input */}
-            {Array.from({ length: 8 }).map((_, i) => (
-                <mesh key={i} position={[-4, 2 - i * 0.5, 0.15]}>
-                    <planeGeometry args={[2, 0.2]} />
-                    <meshBasicMaterial color="#3e434a" />
-                </mesh>
-            ))}
-
-            {/* Right Panel: Sources */}
-            <mesh position={[4, 0, 0.1]}>
-                <planeGeometry args={[3, 6]} />
-                <meshStandardMaterial color="#25282c" />
-            </mesh>
-            {/* Source Blocks */}
-            {Array.from({ length: 4 }).map((_, i) => (
-                <mesh key={i} position={[4, 1.5 - i * 1.2, 0.15]}>
-                    <planeGeometry args={[2.5, 0.8]} />
-                    <meshBasicMaterial color="#3e434a" />
-                </mesh>
-            ))}
-
-            {/* Center Panel: Output (Glowing) */}
-            <mesh position={[0, 0, 0.2]}>
-                <planeGeometry args={[4, 6]} />
-                <meshStandardMaterial color="#111" />
-            </mesh>
-            <mesh position={[0, 2, 0.25]}>
-                <planeGeometry args={[3, 0.5]} />
-                <meshBasicMaterial color="#D4AF37" transparent opacity={0.8} />
-            </mesh>
-            <Text
-                position={[0, 0, 0.3]}
-                fontSize={0.2}
-                maxWidth={3.5}
-                color="#eee"
-                textAlign="center"
-                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-            >
-                Constructing response from verifiable enterprise sources...
+            {/* Particles forming logo (Simulated) */}
+            <Points count={500} />
+            <Text position={[0, 0, 0]} fontSize={1} color="white" font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff">
+                RAGQUERY
             </Text>
-
+            <mesh position={[0, -1, 0]}>
+                <planeGeometry args={[5, 0.05]} />
+                <meshBasicMaterial color="#D4AF37" />
+            </mesh>
         </group>
     );
 }
+
+function Points({ count = 100 }) {
+    const points = useMemo(() => {
+        const p = new Float32Array(count * 3);
+        for (let i = 0; i < count * 3; i++) p[i] = (Math.random() - 0.5) * 5;
+        return p;
+    }, [count]);
+    return (
+        <points>
+            <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[points, 3]} />
+            </bufferGeometry>
+            <pointsMaterial size={0.05} color="#D4AF37" transparent opacity={0.5} />
+        </points>
+    );
+}
+
+
+// --- THE SCENE CONTROLLER ---
 
 export function Scene() {
     const scroll = useScroll();
     const cameraRef = useRef<THREE.PerspectiveCamera>(null!);
+
+    // Scene Refs
     const watchRef = useRef<THREE.Group>(null!);
     const cardRef = useRef<THREE.Group>(null!);
-    const spiralRef = useRef<THREE.Group>(null!);
-    const boardRef = useRef<THREE.Group>(null!);
+    const carRef = useRef<THREE.Group>(null!);
+    const brandRef = useRef<THREE.Group>(null!);
 
     useFrame((state, delta) => {
-        const r = scroll.offset;
+        const r = scroll.offset; // 0 to 1
 
-        // --- CAMERA SEQUENCE ---
+        // --- 6-STAGE CAMERA RIG DIRECTOR ---
+        // 0-0.15: Establishing (Store)
+        // 0.15-0.35: Macro (Watch Inside)
+        // 0.35-0.55: Transaction (Card)
+        // 0.55-0.75: Chase (Car)
+        // 0.75-0.90: Emblem Zoom (Car Nose)
+        // 0.90-1.0: Brand Reveal (Void)
+
         if (cameraRef.current) {
-            // Camera logic must handle the "Gaps" smoothy
-            cameraRef.current.position.x = 0;
-            cameraRef.current.position.y = 0;
 
-            if (r < 0.4) {
-                // WATCH PHASE
-                cameraRef.current.position.z = 5;
-                cameraRef.current.lookAt(0, 0, 0);
-            } else if (r < 0.75) {
-                // CARD PHASE
-                cameraRef.current.position.z = 4.5;
+            // Default lookAt
+            let lookAtTarget = new THREE.Vector3(0, 0, 0);
+
+            if (r < 0.15) {
+                // RIG 1: ESTABLISHING
+                // Slide forward slowly
+                const p = r / 0.15;
+                cameraRef.current.position.set(0, 0.5, 5 - p * 1); // 5 -> 4
+                lookAtTarget.set(0, 0, 0);
+
+            } else if (r < 0.35) {
+                // RIG 2: MACRO ZOOM
+                // Zoom deep into watch
+                const p = (r - 0.15) / 0.20;
+                // Move from z=4 to z=1, maybe tilt down
+                cameraRef.current.position.set(0, THREE.MathUtils.lerp(0.5, 2, p), THREE.MathUtils.lerp(4, 0.5, p));
+                cameraRef.current.rotation.x = -Math.PI / 4 * p;
+                lookAtTarget.set(0, 0, 0);
+
+                // Spin watch gears?
+                if (watchRef.current) {
+                    watchRef.current.rotation.z += 0.01; // Ticking
+                }
+
+            } else if (r < 0.55) {
+                // RIG 3: TRANSACTION
+                // Locked frame
+                cameraRef.current.position.set(0, 0, 5);
+                cameraRef.current.rotation.set(0, 0, 0);
+
+                const p = (r - 0.35) / 0.20;
+                // Transitions: Watch FADEOUT, Card FADEIN
+                if (watchRef.current) watchRef.current.visible = false;
+                if (cardRef.current) {
+                    cardRef.current.visible = true;
+                    // Swipe Animation
+                    cardRef.current.position.x = THREE.MathUtils.lerp(-5, 0, p * 2);
+                    if (p > 0.5) cardRef.current.rotation.y = (p - 0.5) * Math.PI; // Spin finish
+                }
+
+            } else if (r < 0.80) {
+                // RIG 4: CHASE (The Drive)
+                if (cardRef.current) cardRef.current.visible = false;
+                if (carRef.current) {
+                    carRef.current.visible = true;
+                    // Car is at 0,0,0. Camera trails behind.
+                    const p = (r - 0.55) / 0.25;
+
+                    // Camera shake
+                    const shake = Math.sin(state.clock.elapsedTime * 20) * 0.05;
+
+                    // Camera moves low and close
+                    cameraRef.current.position.set(shake, 1.5, 6);
+                    cameraRef.current.lookAt(0, 0.5, 0);
+                }
+
+            } else if (r < 0.95) {
+                // RIG 5: EMBLEM ZOOM
+                // Fly into the hood of the car
+                if (carRef.current) carRef.current.visible = true;
+                const p = (r - 0.80) / 0.15;
+
+                // Zoom to logo at (0, 0.5, -2.26)
+                cameraRef.current.position.set(0, 1.5 - p, 6 - p * 8); // ending at z=-2 (past logo)
+                cameraRef.current.lookAt(0, 0.5, -3);
+
             } else {
-                // SPIRAL/BOARD PHASE -> Fly through
-                const p = (r - 0.75) / 0.25;
-                cameraRef.current.position.z = THREE.MathUtils.lerp(4.5, 2, p);
+                // RIG 6: BRAND REVEAL
+                // Car gone. Brand appears.
+                if (carRef.current) carRef.current.visible = false;
+                if (brandRef.current) {
+                    brandRef.current.visible = true;
+                    cameraRef.current.position.set(0, 0, 5);
+                    cameraRef.current.lookAt(0, 0, 0);
+                }
             }
         }
-
-        // --- STRICT VISIBILITY TIMING ---
-        // Plan:
-        // 0.0-0.2: TEXT 1 (No 3D)
-        // 0.2-0.4: WATCH (3D Only)
-        // 0.4-0.5: TEXT 2 (No 3D)
-        // 0.5-0.7: CARD (3D Only)
-        // 0.7-0.8: TEXT 3 (No 3D)
-        // 0.8-1.0: SPIRAL -> BOARD (3D Only)
-
-        // 1. WATCH (Visible 0.2 - 0.4)
-        if (watchRef.current) {
-            const start = 0.2;
-            const end = 0.4;
-            // Smooth fade in/out slightly around edges
-            const visible = r > start - 0.05 && r < end + 0.05;
-            watchRef.current.visible = visible;
-
-            if (visible) {
-                // Fade opacity/scale logic
-                let opacity = 1;
-                if (r < start) opacity = (r - (start - 0.05)) / 0.05;
-                if (r > end) opacity = 1 - (r - end) / 0.05;
-                watchRef.current.scale.setScalar(opacity * 0.9);
-
-                watchRef.current.rotation.y = r * Math.PI;
-                watchRef.current.rotation.x = 0.2;
-            }
-        }
-
-        // 2. CARD (Visible 0.5 - 0.7)
-        if (cardRef.current) {
-            const start = 0.5;
-            const end = 0.7;
-            const visible = r > start - 0.05 && r < end + 0.05;
-            cardRef.current.visible = visible;
-
-            if (visible) {
-                let s = 1;
-                if (r < start) s = (r - (start - 0.05)) / 0.05;
-                if (r > end) s = 1 - (r - end) / 0.05;
-                cardRef.current.scale.setScalar(s);
-
-                // LEFT to RIGHT Motion
-                // Map 0.5->0.7 to X=-4 -> X=4
-                const p = (r - start) / (end - start);
-                cardRef.current.position.x = THREE.MathUtils.lerp(-4, 4, p);
-            }
-        }
-
-        // 3. SPIRAL & BOARD (Visible 0.8 - 1.0)
-        if (spiralRef.current && boardRef.current) {
-            const start = 0.8;
-            const visible = r > start - 0.05;
-            spiralRef.current.visible = visible;
-            boardRef.current.visible = visible;
-
-            if (visible) {
-                // Fade in
-                let s = 1;
-                if (r < start) s = (r - (start - 0.05)) / 0.05;
-
-                // Spiral rotates
-                spiralRef.current.scale.setScalar(s);
-
-                // Board comes in at end (0.9+)
-                const boardP = Math.max(0, (r - 0.9) / 0.1);
-                boardRef.current.scale.setScalar(boardP); // Zoom up from 0
-                boardRef.current.position.z = -2; // Behind spiral initially? No, Camera zooms in.
-            }
-        }
-
     });
 
     return (
         <>
-            <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0, 5]} fov={45} />
-            <Environment preset="city" />
-            {/* Cinematic Lighting */}
-            <ambientLight intensity={0.2} />
-            <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} castShadow />
-            <pointLight position={[-10, -10, -10]} intensity={0.5} color="#444" />
+            <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0, 5]} fov={50} />
+            <Environment preset="night" />
+            <ambientLight intensity={0.5} />
+            <spotLight position={[10, 10, 10]} angle={0.5} penumbra={1} intensity={2} castShadow />
 
-            <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
-
-            <group ref={watchRef}>
+            {/* SCENE 1 & 2: WATCH */}
+            <group ref={watchRef} visible={true}>
                 <GodfatherWatchModel />
             </group>
 
-            <group ref={cardRef}>
+            {/* SCENE 3: CARD */}
+            <group ref={cardRef} visible={false}>
                 <CardModel />
             </group>
 
-            <group ref={spiralRef} position={[0, 0, -5]}>
-                <MechanicalSpiral />
+            {/* SCENE 4 & 5: CAR & CITY */}
+            <group ref={carRef} visible={false}>
+                <HyperCarModel />
+                <CityTunnel />
             </group>
 
-            <group ref={boardRef} position={[0, 0, -8]}>
-                <RAGBoardModel />
+            {/* SCENE 6: BRAND */}
+            <group ref={brandRef} visible={false}>
+                <BrandReveal />
             </group>
         </>
     );
