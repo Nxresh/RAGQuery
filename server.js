@@ -535,16 +535,19 @@ Output strictly as a JSON array of strings.
 
 // Check for OpenRouter API key (preferred) or Google API key (fallback)
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const GOOGLE_API_KEY = process.env.API_KEY;
+// Use GOOGLE_API_KEY from env, or fall back to API_KEY for backward compatibility
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || process.env.API_KEY;
 
 if (!OPENROUTER_API_KEY && !GOOGLE_API_KEY) {
-  console.error('ERROR: No API key found. Set OPENROUTER_API_KEY or API_KEY in .env');
+  console.error('ERROR: No API key found. Set OPENROUTER_API_KEY or GOOGLE_API_KEY in .env');
   process.exit(1);
 }
 
 // Determine which provider to use
 const USE_OPENROUTER = !!OPENROUTER_API_KEY;
 console.log(`🤖 Using AI Provider: ${USE_OPENROUTER ? 'OpenRouter' : 'Google Gemini'}`);
+console.log(`📡 Embedding API Key: ${GOOGLE_API_KEY ? 'Configured' : 'Missing'}`);
+
 
 // OpenRouter API call function
 async function callOpenRouter(prompt) {
