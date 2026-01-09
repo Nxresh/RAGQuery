@@ -1,49 +1,72 @@
-import { useRef, useLayoutEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
-import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text } from '@react-three/drei';
+import { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Cloud, Line, PointMaterial, Points } from '@react-three/drei';
 import * as THREE from 'three';
-import { gsap } from 'gsap';
+import * as random from 'maath/random/dist/maath-random.esm'
+import { useState } from 'react';
 
-// --- ASSET PLACEHOLDERS (Replace with real GLBs) ---
-// To use real models:
-// 1. Download models (watch.glb, car.glb) to /public/models/
-// 2. Use: const { scene } = useGLTF('/models/watch.glb')
-// 3. Replace the mesh primitives below with <primitive object={scene} />
-
-// --- HIGH-END PROCEDURAL ASSETS ---
+// --- HIGH-FIDELITY PROCEDURAL ASSETS ---
 
 function WatchModel() {
     return (
         <group>
-            {/* Case */}
+            {/* Bezel: Gold Ridged */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <torusGeometry args={[1, 0.1, 32, 100]} />
+                <torusGeometry args={[1, 0.08, 32, 100]} />
                 <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.15} envMapIntensity={2} />
             </mesh>
-            {/* Face Background */}
-            <mesh position={[0, 0, -0.05]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.95, 0.95, 0.05, 32]} />
-                <meshStandardMaterial color="#0a0a0a" metalness={0.5} roughness={0.5} />
+            {/* Glass Face: Physical material for transmission */}
+            <mesh position={[0, 0, 0.06]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.95, 0.95, 0.02, 64]} />
+                <meshPhysicalMaterial
+                    color="white"
+                    metalness={0.1}
+                    roughness={0}
+                    transmission={0.95}
+                    thickness={0.1}
+                    clearcoat={1}
+                />
             </mesh>
-            {/* Hour Markers */}
+            {/* Internal Mechanics: Gears/Cogs visible behind glass */}
+            <group position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
+                <mesh rotation={[0, 0, 1]}>
+                    <cylinderGeometry args={[0.4, 0.4, 0.05, 12]} />
+                    <meshStandardMaterial color="#444" metalness={0.8} />
+                </mesh>
+                <mesh position={[0.5, 0.2, -0.02]} rotation={[0, 0, 2]}>
+                    <cylinderGeometry args={[0.2, 0.2, 0.05, 8]} />
+                    <meshStandardMaterial color="#666" metalness={0.8} />
+                </mesh>
+            </group>
+            {/* Face Background */}
+            <mesh position={[0, 0, -0.15]} rotation={[Math.PI / 2, 0, 0]}>
+                <cylinderGeometry args={[0.9, 0.9, 0.02, 64]} />
+                <meshStandardMaterial color="#050505" metalness={0.5} roughness={0.5} />
+            </mesh>
+            {/* Hour Markers: Glowing */}
             {Array.from({ length: 12 }).map((_, i) => (
                 <mesh
                     key={i}
-                    position={[0.8 * Math.cos(i * Math.PI / 6), 0.8 * Math.sin(i * Math.PI / 6), 0.05]}
+                    position={[0.8 * Math.cos(i * Math.PI / 6), 0.8 * Math.sin(i * Math.PI / 6), 0]}
                     rotation={[0, 0, i * Math.PI / 6]}
                 >
-                    <boxGeometry args={[0.1, 0.02, 0.05]} />
-                    <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.1} />
+                    <boxGeometry args={[0.08, 0.02, 0.05]} />
+                    <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.5} toneMapped={false} />
                 </mesh>
             ))}
-            {/* Hands */}
-            <mesh position={[0, 0, 0.1]} rotation={[0, 0, 0.5]}>
-                <boxGeometry args={[0.04, 0.7, 0.02]} />
-                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={0.2} />
+            {/* Hands: 3D Gold */}
+            <mesh position={[0, 0, 0]} rotation={[0, 0, -1]}>
+                <boxGeometry args={[0.05, 0.6, 0.05]} />
+                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
             </mesh>
-            <mesh position={[0, 0, 0.1]} rotation={[0, 0, 2]}>
-                <boxGeometry args={[0.04, 0.5, 0.02]} />
-                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={0.2} />
+            <mesh position={[0, 0, 0.02]} rotation={[0, 0, 2.5]}>
+                <boxGeometry args={[0.04, 0.4, 0.05]} />
+                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
+            </mesh>
+            {/* Second Hand: Red */}
+            <mesh position={[0, 0, 0.03]} rotation={[0, 0, 0]} name="secondHand">
+                <boxGeometry args={[0.01, 0.8, 0.02]} />
+                <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.5} />
             </mesh>
         </group>
     );
@@ -52,85 +75,94 @@ function WatchModel() {
 function CardModel() {
     return (
         <group>
-            {/* Card Body */}
+            {/* Card Body: Matte Black Premium */}
             <mesh>
                 <boxGeometry args={[3.37, 2.125, 0.05]} />
                 <meshPhysicalMaterial
-                    color="#111"
-                    metalness={0.9}
-                    roughness={0.3}
-                    clearcoat={1}
-                    clearcoatRoughness={0.1}
+                    color="#050505"
+                    metalness={0.8}
+                    roughness={0.4}
+                    clearcoat={0.5}
                 />
             </mesh>
             {/* Chip */}
             <mesh position={[-1.2, 0.3, 0.03]}>
                 <planeGeometry args={[0.5, 0.4]} />
-                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
+                <meshStandardMaterial color="#eebb55" metalness={1} roughness={0.3} />
             </mesh>
-            {/* Magstrip / Detail */}
-            <mesh position={[0, -0.5, 0.03]}>
-                <planeGeometry args={[3, 0.2]} />
-                <meshStandardMaterial color="#222" metalness={0.5} roughness={0.8} />
-            </mesh>
-            {/* Text */}
+            {/* Text: Gold Embossed */}
             <Text
-                position={[0, 0, 0.04]}
+                position={[0, 0, 0.035]}
                 fontSize={0.25}
-                color="#fff"
+                color="#eebb55"
                 font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+                anchorX="center"
+                anchorY="middle"
             >
                 RAGQUERY
             </Text>
+            <Text
+                position={[-1.0, -0.6, 0.035]}
+                fontSize={0.12}
+                color="#888"
+                font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+            >
+                XXXX XXXX XXXX 1234
+            </Text>
+
+            {/* Mastercard Logo: Procedural Circles */}
+            <group position={[1.1, -0.6, 0.04]}>
+                <mesh position={[-0.15, 0, 0]}>
+                    <circleGeometry args={[0.25, 32]} />
+                    <meshBasicMaterial color="#EB001B" transparent opacity={0.9} />
+                </mesh>
+                <mesh position={[0.15, 0, 0.001]}>
+                    <circleGeometry args={[0.25, 32]} />
+                    <meshBasicMaterial color="#FF5F00" transparent opacity={0.8} />
+                </mesh>
+            </group>
         </group>
     );
 }
 
-function CarModel() {
+function NeuralNexusModel() {
+    // Procedural Neural Network Visualization
+    const [sphere] = useState(() => random.inSphere(new Float32Array(300), { radius: 1.5 }));
+
     return (
         <group>
-            {/* Body: Aerodynamic Shell */}
-            <mesh rotation={[0, Math.PI / 2, 0]} position={[0, 0.5, 0]}>
-                <capsuleGeometry args={[0.7, 3.5, 4, 16]} />
-                <meshPhysicalMaterial
-                    color="#001a33"
-                    metalness={0.8}
-                    roughness={0.2}
-                    clearcoat={1}
-                    clearcoatRoughness={0}
+            {/* Central Core: Radiant Brain */}
+            <mesh>
+                <icosahedronGeometry args={[0.8, 2]} />
+                <meshStandardMaterial
+                    color="#00ffff"
+                    emissive="#00ffff"
+                    emissiveIntensity={2}
+                    wireframe
+                    transparent
+                    opacity={0.3}
                 />
             </mesh>
-            {/* Cockpit */}
-            <mesh position={[0, 0.8, -0.5]} rotation={[0, Math.PI / 2, 0]}>
-                <capsuleGeometry args={[0.5, 1.5, 4, 16]} />
-                <meshPhysicalMaterial color="#000" metalness={0.9} roughness={0} opacity={0.9} transparent />
+            <mesh>
+                <icosahedronGeometry args={[0.5, 4]} />
+                <meshPhysicalMaterial
+                    color="#ffffff"
+                    transmission={1}
+                    roughness={0}
+                    thickness={2}
+                />
             </mesh>
-            {/* Wheels */}
-            {/* Front Left */}
-            <mesh position={[-0.8, 0.3, 1.2]} rotation={[0, Math.PI / 2, Math.PI / 2]}>
-                <cylinderGeometry args={[0.3, 0.3, 0.2, 32]} />
-                <meshStandardMaterial color="#111" roughness={0.8} />
-            </mesh>
-            {/* Front Right */}
-            <mesh position={[0.8, 0.3, 1.2]} rotation={[0, Math.PI / 2, Math.PI / 2]}>
-                <cylinderGeometry args={[0.3, 0.3, 0.2, 32]} />
-                <meshStandardMaterial color="#111" roughness={0.8} />
-            </mesh>
-            {/* Rear Left */}
-            <mesh position={[-0.8, 0.3, -1.2]} rotation={[0, Math.PI / 2, Math.PI / 2]}>
-                <cylinderGeometry args={[0.35, 0.35, 0.25, 32]} />
-                <meshStandardMaterial color="#111" roughness={0.8} />
-            </mesh>
-            {/* Rear Right */}
-            <mesh position={[0.8, 0.3, -1.2]} rotation={[0, Math.PI / 2, Math.PI / 2]}>
-                <cylinderGeometry args={[0.35, 0.35, 0.25, 32]} />
-                <meshStandardMaterial color="#111" roughness={0.8} />
-            </mesh>
-            {/* Tail Lights (Red Trails) */}
-            <mesh position={[0, 0.5, -2]}>
-                <boxGeometry args={[1.5, 0.1, 0.1]} />
-                <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={8} toneMapped={false} />
-            </mesh>
+
+            {/* Connecting Nodes */}
+            <Points positions={sphere} stride={3} frustumCulled={false}>
+                <PointMaterial
+                    transparent
+                    color="#ffa0e0"
+                    size={0.03}
+                    sizeAttenuation={true}
+                    depthWrite={false}
+                />
+            </Points>
         </group>
     );
 }
@@ -140,123 +172,135 @@ export function Scene() {
     const cameraRef = useRef<THREE.PerspectiveCamera>(null!);
     const watchRef = useRef<THREE.Group>(null!);
     const cardRef = useRef<THREE.Group>(null!);
-    const carRef = useRef<THREE.Group>(null!);
-    const textRef = useRef<any>(null!);
+    const nexusRef = useRef<THREE.Group>(null!);
 
     // Animation Loop
     useFrame((state, delta) => {
-        // Current scroll offset (0 to 1)
         const r = scroll.offset;
 
-        // --- CAMERA MOVEMENT ---
-        // Scene 1-2: Watch (0 - 0.3)
-        // Scene 3: Card (0.3 - 0.6)
-        // Scene 4: Car (0.6 - 0.8)
-        // Scene 5: Reveal (0.8 - 1.0)
-
-        // Interpolate Camera Position based on scroll
-        // Start: [0, 0, 5]
-        // Watch Zoom: [0, 0, 2]
-        // Card Move: [2, 0, 4]
-        // Car Chase: [0, 1, 6]
-        // Reveal: [0, 0, 8]
-
+        // --- CAMERA SEQUENCE ---
         if (cameraRef.current) {
-            // Simple linear interpolation logic for demo
-            // Ideally use GSAP timeline synced to scroll, but manual lerp works for R3F
-
-            // Phase 1: Watch Zoom (0 -> 0.3)
-            if (r < 0.33) {
-                const p = r / 0.33;
+            // Phase 1: Void (Text View) (0 - 0.2)
+            // Camera stationary or slow drift
+            if (r < 0.2) {
+                cameraRef.current.position.z = 5;
+                cameraRef.current.position.y = 0;
+                cameraRef.current.position.x = 0;
+            }
+            // Phase 2: Watch Entry & Zoom (0.2 - 0.5)
+            else if (r < 0.5) {
+                const p = (r - 0.2) / 0.3;
                 cameraRef.current.position.z = THREE.MathUtils.lerp(5, 2, p);
-                cameraRef.current.position.y = THREE.MathUtils.lerp(0, 0.5, p);
+                cameraRef.current.position.y = THREE.MathUtils.lerp(0, 0, p);
+                // Subtle tilt
+                cameraRef.current.rotation.x = THREE.MathUtils.lerp(0, -0.2, p);
             }
-            // Phase 2: Card Transition (0.33 -> 0.66)
-            else if (r < 0.66) {
-                const p = (r - 0.33) / 0.33;
+            // Phase 3: Card Transition (0.5 - 0.75)
+            else if (r < 0.75) {
+                const p = (r - 0.5) / 0.25;
                 cameraRef.current.position.z = THREE.MathUtils.lerp(2, 4, p);
-                cameraRef.current.position.x = THREE.MathUtils.lerp(0, 2, p);
-                cameraRef.current.lookAt(0, 0, 0);
+                cameraRef.current.position.x = THREE.MathUtils.lerp(0, 0, p);
+                cameraRef.current.rotation.x = THREE.MathUtils.lerp(-0.2, 0, p);
             }
-            // Phase 3: Car/Reveal (0.66 -> 1.0)
+            // Phase 4: Nexus / Reveal (0.75 - 1.0)
             else {
-                const p = (r - 0.66) / 0.34;
-                cameraRef.current.position.x = THREE.MathUtils.lerp(2, 0, p);
-                cameraRef.current.position.z = THREE.MathUtils.lerp(4, 8, p);
-                cameraRef.current.position.y = THREE.MathUtils.lerp(0.5, 0, p);
+                const p = (r - 0.75) / 0.25;
+                cameraRef.current.position.z = THREE.MathUtils.lerp(4, 3, p);
+                cameraRef.current.position.y = THREE.MathUtils.lerp(0, 0, p);
             }
 
-            cameraRef.current.lookAt(0, 0, 0);
+            // cameraRef.current.lookAt(0,0,0); // Manual lookAt override if needed, but rotation.x handles tilt
         }
 
-        // --- OBJECT ANIMATIONS ---
+        // --- OBJECT VISIBILITY & ANIMATION ---
 
-        // Watch: Spin execution
+        // 1. WATCH (Visible 0.2 - 0.55)
         if (watchRef.current) {
-            watchRef.current.rotation.y += delta * 0.2; // Idle spin
-            watchRef.current.rotation.x = r * Math.PI * 2; // Scroll spin
+            const appearStart = 0.2;
+            const disappearEnd = 0.55;
 
-            // Visibility
-            const visible = r < 0.35;
-            watchRef.current.scale.setScalar(THREE.MathUtils.lerp(visible ? 1 : 0, visible ? 1 : 0, 0.1));
+            // Scale logic: Fade in then out
+            let s = 0;
+            if (r > appearStart && r < disappearEnd) {
+                if (r < appearStart + 0.1) s = (r - appearStart) / 0.1; // Fade in
+                else if (r > disappearEnd - 0.1) s = 1 - (r - (disappearEnd - 0.1)) / 0.1; // Fade out
+                else s = 1;
+            }
+            watchRef.current.scale.setScalar(THREE.MathUtils.lerp(watchRef.current.scale.x, s, 0.1));
+
+            // Rotation
+            watchRef.current.rotation.y = r * Math.PI * 2;
+            watchRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.1;
+
+            // Second hand tick (hacky but works)
+            const secondHand = watchRef.current.getObjectByName("secondHand");
+            if (secondHand) secondHand.rotation.z = -state.clock.elapsedTime * 2;
         }
 
-        // Card: Swipe and Reveal
+        // 2. CARD (Visible 0.5 - 0.8)
         if (cardRef.current) {
-            // Appears at 0.3
-            const visible = r > 0.3 && r < 0.65;
-            const scaleNode = visible ? 1 : 0;
-            cardRef.current.scale.setScalar(THREE.MathUtils.lerp(cardRef.current.scale.x, scaleNode, 0.1));
+            const appearStart = 0.5;
+            const disappearEnd = 0.8;
 
-            cardRef.current.rotation.y = r * Math.PI * 4; // Fast spin
-            cardRef.current.position.x = THREE.MathUtils.lerp(-5, 0, (r - 0.3) * 5); // Slide in
+            let s = 0;
+            if (r > appearStart && r < disappearEnd) {
+                if (r < appearStart + 0.1) s = (r - appearStart) / 0.1;
+                else if (r > disappearEnd - 0.1) s = 1 - (r - (disappearEnd - 0.1)) / 0.1;
+                else s = 1;
+            }
+            cardRef.current.scale.setScalar(THREE.MathUtils.lerp(cardRef.current.scale.x, s, 0.1));
+
+            // Floating & Rotate
+            cardRef.current.rotation.y = Math.PI + Math.sin(state.clock.elapsedTime * 0.5) * 0.2 + (r - 0.5) * 2;
+            cardRef.current.rotation.z = Math.cos(state.clock.elapsedTime * 0.3) * 0.1;
         }
 
-        // Car: Drive by
-        if (carRef.current) {
-            const visible = r > 0.6;
-            const scaleNode = visible ? 1 : 0;
-            carRef.current.scale.setScalar(THREE.MathUtils.lerp(carRef.current.scale.x, scaleNode, 0.1));
+        // 3. NEURAL NEXUS (Visible 0.75 - 1.0)
+        if (nexusRef.current) {
+            const appearStart = 0.75;
 
-            // Shake effect
-            carRef.current.position.y = Math.sin(state.clock.elapsedTime * 20) * 0.02 - 1; // Low position
-            carRef.current.position.z = THREE.MathUtils.lerp(-10, 0, (r - 0.6) * 4); // Drive forward
+            let s = 0;
+            if (r > appearStart) {
+                s = Math.min(1, (r - appearStart) / 0.1);
+            }
+            nexusRef.current.scale.setScalar(THREE.MathUtils.lerp(nexusRef.current.scale.x, s, 0.1));
+
+            // Pulse
+            nexusRef.current.rotation.y += delta * 0.5;
+            nexusRef.current.rotation.z += delta * 0.2;
         }
+
     });
 
     return (
         <>
             <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0, 5]} fov={45} />
 
-            {/* Environment & Lighting */}
+            {/* Cinematic Lighting & Environment */}
             <Environment preset="city" />
-            <ambientLight intensity={0.5} />
-            <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={2} castShadow />
+            <ambientLight intensity={0.2} />
+            <pointLight position={[-10, -10, -10]} intensity={1} color="blue" />
+            <spotLight position={[10, 10, 10]} angle={0.2} penumbra={1} intensity={2} castShadow color="white" />
 
-            {/* Floating Particles */}
-            <Sparkles count={50} scale={10} size={4} speed={0.4} opacity={0.5} color="#ffffff" />
+            {/* Background Atmosphere */}
+            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+            <Cloud opacity={0.3} speed={0.2} width={10} depth={1.5} segments={20} position={[0, -5, -10]} color="#111122" />
+
+            {/* Floating Particles (Dust) */}
+            <Sparkles count={100} scale={12} size={2} speed={0.4} opacity={0.5} color="#44aaff" />
 
             {/* --- OBJECTS --- */}
 
-            {/* 1. Watch (Time) */}
             <group ref={watchRef}>
-                <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-                    <WatchModel />
-                </Float>
+                <WatchModel />
             </group>
 
-            {/* 2. Card (Trust) */}
-            <group ref={cardRef} position={[0, 0, 0]} scale={0}>
-                <Float speed={4} rotationIntensity={1} floatIntensity={0.5}>
-                    <CardModel />
-                </Float>
+            <group ref={cardRef}>
+                <CardModel />
             </group>
 
-            {/* 3. Car (Power) */}
-            <group ref={carRef} position={[0, -1, 0]} scale={0}>
-                <CarModel />
-                {/* Speed lines */}
-                <Sparkles count={100} scale={[2, 0.5, 5]} position={[0, 0.5, 0]} speed={5} color="#00ffff" opacity={0.3} size={10} />
+            <group ref={nexusRef}>
+                <NeuralNexusModel />
             </group>
 
         </>
