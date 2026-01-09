@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Cloud, Line, PointMaterial, Points } from '@react-three/drei';
+import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Line, PointMaterial, Points } from '@react-three/drei';
 import * as THREE from 'three';
 import { useState } from 'react';
 
@@ -300,7 +300,7 @@ export function Scene() {
 
             {/* Background Atmosphere */}
             <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-            <Cloud opacity={0.3} speed={0.2} width={10} depth={1.5} segments={20} position={[0, -5, -10]} color="#111122" />
+            {/* Cloud component removed - incompatible props with drei v10 */}
 
             {/* Floating Particles (Dust) */}
             <Sparkles count={100} scale={12} size={2} speed={0.4} opacity={0.5} color="#44aaff" />
