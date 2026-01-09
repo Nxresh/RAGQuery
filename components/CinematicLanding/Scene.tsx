@@ -68,7 +68,7 @@ function GodfatherWatchModel() {
                     rotation={[-Math.PI / 2, 0, 0]}
                     fontSize={0.1}
                     color="#fff"
-                    font="https://fonts.gstatic.com/s/alfaoneroom/v1/m8JVjfKr7al8y0mX8m2h.woff"
+                    font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
                     anchorX="center"
                     anchorY="middle"
                 >
