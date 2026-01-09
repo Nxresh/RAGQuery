@@ -503,7 +503,8 @@ export const securityHeaders = helmet({
                 "https://github.com",
                 "https://poly.pizza",
                 "https://*.firebaseapp.com",
-                "https://*.googleapis.com"
+                "https://*.googleapis.com",
+                "https://fonts.gstatic.com"
             ],
             frameAncestors: ["'none'"],
             objectSrc: ["'none'"],
