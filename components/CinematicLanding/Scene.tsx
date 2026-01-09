@@ -1,89 +1,48 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Line, PointMaterial, Points } from '@react-three/drei';
+import { useScroll, Environment, Sparkles, PerspectiveCamera, Text, Stars, Float, Icosahedron, Dodecahedron, Octahedron, Torus } from '@react-three/drei';
 import * as THREE from 'three';
-import { useState } from 'react';
 
-// Function to generate random points in a sphere (Replaces maath)
-function inSphere(buffer: Float32Array, options: { radius: number }) {
-    const { radius } = options;
-    for (let i = 0; i < buffer.length; i += 3) {
-        const u = Math.random();
-        const v = Math.random();
-        const theta = 2 * Math.PI * u;
-        const phi = Math.acos(2 * v - 1);
-        const r = Math.cbrt(Math.random()) * radius;
-        const sinPhi = Math.sin(phi);
-        buffer[i] = r * sinPhi * Math.cos(theta);
-        buffer[i + 1] = r * sinPhi * Math.sin(theta);
-        buffer[i + 2] = r * Math.cos(phi);
-    }
-    return buffer;
-}
+// --- ASSETS ---
 
-// --- HIGH-FIDELITY PROCEDURAL ASSETS ---
-
-function WatchModel() {
+function ClassicWatchModel() {
     return (
-        <group>
-            {/* Bezel: Gold Ridged */}
+        <group rotation={[Math.PI / 2, 0, 0]} scale={0.8}>
+            {/* Strap: Leather texture look */}
+            <mesh position={[0, 0, -0.1]}>
+                <boxGeometry args={[0.6, 2.5, 0.05]} />
+                <meshStandardMaterial color="#1a1a1a" roughness={0.9} />
+            </mesh>
+
+            {/* Case: Polished Silver/Steel */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <torusGeometry args={[1, 0.08, 32, 100]} />
-                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.15} envMapIntensity={2} />
+                <cylinderGeometry args={[0.8, 0.8, 0.15, 64]} />
+                <meshStandardMaterial color="#e0e0e0" metalness={1} roughness={0.1} envMapIntensity={2} />
             </mesh>
-            {/* Glass Face: Physical material for transmission */}
-            <mesh position={[0, 0, 0.06]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.95, 0.95, 0.02, 64]} />
-                <meshPhysicalMaterial
-                    color="white"
-                    metalness={0.1}
-                    roughness={0}
-                    transmission={0.95}
-                    thickness={0.1}
-                    clearcoat={1}
-                />
+
+            {/* Bezel: Gold Accent */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
+                <torusGeometry args={[0.8, 0.05, 32, 64]} />
+                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
             </mesh>
-            {/* Internal Mechanics: Gears/Cogs visible behind glass */}
-            <group position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
-                <mesh rotation={[0, 0, 1]}>
-                    <cylinderGeometry args={[0.4, 0.4, 0.05, 12]} />
-                    <meshStandardMaterial color="#444" metalness={0.8} />
+
+            {/* Face: Deep Blue Sunburst */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
+                <cylinderGeometry args={[0.75, 0.75, 0.01, 64]} />
+                <meshStandardMaterial color="#001133" metalness={0.5} roughness={0.4} />
+            </mesh>
+
+            {/* Hands */}
+            <group position={[0, 0.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <mesh position={[0, 0, 0]} rotation={[0, 0, 0]}>
+                    <boxGeometry args={[0.04, 0.5, 0.01]} />
+                    <meshStandardMaterial color="#FFD700" metalness={1} />
                 </mesh>
-                <mesh position={[0.5, 0.2, -0.02]} rotation={[0, 0, 2]}>
-                    <cylinderGeometry args={[0.2, 0.2, 0.05, 8]} />
-                    <meshStandardMaterial color="#666" metalness={0.8} />
+                <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+                    <boxGeometry args={[0.04, 0.35, 0.01]} />
+                    <meshStandardMaterial color="#FFD700" metalness={1} />
                 </mesh>
             </group>
-            {/* Face Background */}
-            <mesh position={[0, 0, -0.15]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.9, 0.9, 0.02, 64]} />
-                <meshStandardMaterial color="#050505" metalness={0.5} roughness={0.5} />
-            </mesh>
-            {/* Hour Markers: Glowing */}
-            {Array.from({ length: 12 }).map((_, i) => (
-                <mesh
-                    key={i}
-                    position={[0.8 * Math.cos(i * Math.PI / 6), 0.8 * Math.sin(i * Math.PI / 6), 0]}
-                    rotation={[0, 0, i * Math.PI / 6]}
-                >
-                    <boxGeometry args={[0.08, 0.02, 0.05]} />
-                    <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.5} toneMapped={false} />
-                </mesh>
-            ))}
-            {/* Hands: 3D Gold */}
-            <mesh position={[0, 0, 0]} rotation={[0, 0, -1]}>
-                <boxGeometry args={[0.05, 0.6, 0.05]} />
-                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
-            </mesh>
-            <mesh position={[0, 0, 0.02]} rotation={[0, 0, 2.5]}>
-                <boxGeometry args={[0.04, 0.4, 0.05]} />
-                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
-            </mesh>
-            {/* Second Hand: Red */}
-            <mesh position={[0, 0, 0.03]} rotation={[0, 0, 0]} name="secondHand">
-                <boxGeometry args={[0.01, 0.8, 0.02]} />
-                <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.5} />
-            </mesh>
         </group>
     );
 }
@@ -91,42 +50,47 @@ function WatchModel() {
 function CardModel() {
     return (
         <group>
-            {/* Card Body: Matte Black Premium */}
+            {/* Card Body: Matte Black */}
             <mesh>
                 <boxGeometry args={[3.37, 2.125, 0.05]} />
                 <meshPhysicalMaterial
-                    color="#050505"
-                    metalness={0.8}
+                    color="#000000"
+                    metalness={0.7}
                     roughness={0.4}
-                    clearcoat={0.5}
+                    clearcoat={0.8}
+                    clearcoatRoughness={0.1}
                 />
             </mesh>
+
             {/* Chip */}
             <mesh position={[-1.2, 0.3, 0.03]}>
                 <planeGeometry args={[0.5, 0.4]} />
-                <meshStandardMaterial color="#eebb55" metalness={1} roughness={0.3} />
+                <meshStandardMaterial color="#ffd700" metalness={1} roughness={0.3} />
             </mesh>
-            {/* Text: Gold Embossed */}
+
+            {/* Text: Pure White on Black */}
             <Text
-                position={[0, 0, 0.035]}
-                fontSize={0.25}
-                color="#eebb55"
+                position={[0, 0, 0.04]}
+                fontSize={0.28}
+                color="white"
                 font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
                 anchorX="center"
                 anchorY="middle"
+                letterSpacing={0.05}
             >
                 RAGQUERY
             </Text>
+
             <Text
-                position={[-1.0, -0.6, 0.035]}
-                fontSize={0.12}
-                color="#888"
+                position={[-1.0, -0.6, 0.04]}
+                fontSize={0.14}
+                color="#cccccc"
                 font="https://fonts.gstatic.com/s/inter/v12/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
             >
-                XXXX XXXX XXXX 1234
+                0000 0000 0000 0000
             </Text>
 
-            {/* Mastercard Logo: Procedural Circles */}
+            {/* Mastercard Logo - Classic Red/Orange */}
             <group position={[1.1, -0.6, 0.04]}>
                 <mesh position={[-0.15, 0, 0]}>
                     <circleGeometry args={[0.25, 32]} />
@@ -141,44 +105,78 @@ function CardModel() {
     );
 }
 
-function NeuralNexusModel() {
-    // Procedural Neural Network Visualization
-    const [sphere] = useState(() => inSphere(new Float32Array(300), { radius: 1.5 }));
+function QuantumGeometryModel() {
+    const groupRef = useRef<THREE.Group>(null!);
+
+    useFrame((state) => {
+        if (groupRef.current) {
+            groupRef.current.rotation.y += 0.005;
+            groupRef.current.rotation.z += 0.002;
+        }
+    });
 
     return (
-        <group>
-            {/* Central Core: Radiant Brain */}
+        <group ref={groupRef}>
+            {/* Outer Geodesic Cage */}
             <mesh>
-                <icosahedronGeometry args={[0.8, 2]} />
-                <meshStandardMaterial
-                    color="#00ffff"
-                    emissive="#00ffff"
-                    emissiveIntensity={2}
-                    wireframe
-                    transparent
-                    opacity={0.3}
-                />
-            </mesh>
-            <mesh>
-                <icosahedronGeometry args={[0.5, 4]} />
-                <meshPhysicalMaterial
-                    color="#ffffff"
-                    transmission={1}
-                    roughness={0}
-                    thickness={2}
-                />
+                <icosahedronGeometry args={[1.8, 1]} />
+                <meshStandardMaterial color="#00ffff" wireframe transparent opacity={0.15} />
             </mesh>
 
-            {/* Connecting Nodes */}
-            <Points positions={sphere} stride={3} frustumCulled={false}>
-                <PointMaterial
-                    transparent
-                    color="#ffa0e0"
-                    size={0.03}
-                    sizeAttenuation={true}
-                    depthWrite={false}
-                />
-            </Points>
+            {/* Mid Rotating Rings */}
+            <group rotation={[Math.PI / 4, 0, 0]}>
+                <mesh>
+                    <torusGeometry args={[1.4, 0.02, 16, 100]} />
+                    <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
+                </mesh>
+            </group>
+
+            {/* Inner Geometric Core - "Graph" feel */}
+            <mesh>
+                <dodecahedronGeometry args={[1, 0]} />
+                <meshStandardMaterial color="#ffffff" wireframe transparent opacity={0.3} />
+            </mesh>
+
+            {/* Central Singularity */}
+            <mesh>
+                <octahedronGeometry args={[0.5, 0]} />
+                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={4} toneMapped={false} />
+            </mesh>
+
+            {/* Connecting Lines / Data Streams */}
+            <Sparkles count={40} scale={3} size={4} speed={0.4} opacity={0.6} color="#00ffff" />
+        </group>
+    );
+}
+
+function SpiralTunnel() {
+    // Generate spiral points
+    const points = useMemo(() => {
+        const p = [];
+        for (let i = 0; i < 200; i++) {
+            const t = i / 10;
+            const r = 2 + i * 0.05; // radius increases
+            const x = Math.cos(t * 3) * r;
+            const y = Math.sin(t * 3) * r;
+            const z = -i * 0.5; // clear depth
+            p.push(new THREE.Vector3(x, y, z));
+        }
+        return p;
+    }, []);
+
+    // Create a tube or points along the path
+    const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
+
+    return (
+        <group position={[0, 0, -5]}>
+            {/* Tunnel Particles */}
+            <Sparkles count={500} scale={[10, 10, 50]} size={3} speed={2} opacity={0.5} color="#44aaff" />
+
+            {/* Faint Guide Line */}
+            <mesh>
+                <tubeGeometry args={[curve, 64, 0.05, 8, false]} />
+                <meshBasicMaterial color="#00ffff" transparent opacity={0.1} wireframe />
+            </mesh>
         </group>
     );
 }
@@ -189,101 +187,100 @@ export function Scene() {
     const watchRef = useRef<THREE.Group>(null!);
     const cardRef = useRef<THREE.Group>(null!);
     const nexusRef = useRef<THREE.Group>(null!);
+    const spiralRef = useRef<THREE.Group>(null!);
 
-    // Animation Loop
     useFrame((state, delta) => {
         const r = scroll.offset;
 
         // --- CAMERA SEQUENCE ---
         if (cameraRef.current) {
-            // Phase 1: Void (Text View) (0 - 0.2)
-            // Camera stationary or slow drift
-            if (r < 0.2) {
-                cameraRef.current.position.z = 5;
-                cameraRef.current.position.y = 0;
-                cameraRef.current.position.x = 0;
+            // 0 - 0.25: WATCH
+            if (r < 0.25) {
+                cameraRef.current.position.set(0, 0, 5);
+                cameraRef.current.lookAt(0, 0, 0);
             }
-            // Phase 2: Watch Entry & Zoom (0.2 - 0.5)
+            // 0.25 - 0.5: CARD (Transition)
             else if (r < 0.5) {
-                const p = (r - 0.2) / 0.3;
-                cameraRef.current.position.z = THREE.MathUtils.lerp(5, 2, p);
-                cameraRef.current.position.y = THREE.MathUtils.lerp(0, 0, p);
-                // Subtle tilt
-                cameraRef.current.rotation.x = THREE.MathUtils.lerp(0, -0.2, p);
+                const p = (r - 0.25) / 0.25; // 0 to 1
+                cameraRef.current.position.z = THREE.MathUtils.lerp(5, 4, p);
             }
-            // Phase 3: Card Transition (0.5 - 0.75)
-            else if (r < 0.75) {
-                const p = (r - 0.5) / 0.25;
-                cameraRef.current.position.z = THREE.MathUtils.lerp(2, 4, p);
-                cameraRef.current.position.x = THREE.MathUtils.lerp(0, 0, p);
-                cameraRef.current.rotation.x = THREE.MathUtils.lerp(-0.2, 0, p);
+            // 0.5 - 0.8: NEXUS
+            else if (r < 0.8) {
+                const p = (r - 0.5) / 0.3; // 0 to 1
+                cameraRef.current.position.z = THREE.MathUtils.lerp(4, 2, p);
             }
-            // Phase 4: Nexus / Reveal (0.75 - 1.0)
+            // 0.8 - 1.0: SPIRAL ZOOM
             else {
-                const p = (r - 0.75) / 0.25;
-                cameraRef.current.position.z = THREE.MathUtils.lerp(4, 3, p);
-                cameraRef.current.position.y = THREE.MathUtils.lerp(0, 0, p);
+                const p = (r - 0.8) / 0.2; // 0 to 1
+                // Zoom IN rapidly
+                cameraRef.current.position.z = THREE.MathUtils.lerp(2, -10, p);
             }
-
-            // cameraRef.current.lookAt(0,0,0); // Manual lookAt override if needed, but rotation.x handles tilt
         }
 
-        // --- OBJECT VISIBILITY & ANIMATION ---
+        // --- ANIMATIONS ---
 
-        // 1. WATCH (Visible 0.2 - 0.55)
+        // 1. WATCH (Visible 0 - 0.3)
         if (watchRef.current) {
-            const appearStart = 0.2;
-            const disappearEnd = 0.55;
-
-            // Scale logic: Fade in then out
-            let s = 0;
-            if (r > appearStart && r < disappearEnd) {
-                if (r < appearStart + 0.1) s = (r - appearStart) / 0.1; // Fade in
-                else if (r > disappearEnd - 0.1) s = 1 - (r - (disappearEnd - 0.1)) / 0.1; // Fade out
-                else s = 1;
+            const visible = r < 0.35;
+            watchRef.current.visible = visible;
+            if (visible) {
+                watchRef.current.rotation.y = r * Math.PI * 2;
+                watchRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.1;
+                const scale = THREE.MathUtils.lerp(1, 0, Math.max(0, (r - 0.25) / 0.1));
+                watchRef.current.scale.setScalar(scale);
             }
-            watchRef.current.scale.setScalar(THREE.MathUtils.lerp(watchRef.current.scale.x, s, 0.1));
-
-            // Rotation
-            watchRef.current.rotation.y = r * Math.PI * 2;
-            watchRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.1;
-
-            // Second hand tick (hacky but works)
-            const secondHand = watchRef.current.getObjectByName("secondHand");
-            if (secondHand) secondHand.rotation.z = -state.clock.elapsedTime * 2;
         }
 
-        // 2. CARD (Visible 0.5 - 0.8)
+        // 2. CARD (Visible 0.3 - 0.6)
         if (cardRef.current) {
-            const appearStart = 0.5;
-            const disappearEnd = 0.8;
+            // "The way it moved from left to right"
+            const start = 0.3;
+            const end = 0.6;
+            const visible = r > start - 0.1 && r < end + 0.1;
+            cardRef.current.visible = visible;
 
-            let s = 0;
-            if (r > appearStart && r < disappearEnd) {
-                if (r < appearStart + 0.1) s = (r - appearStart) / 0.1;
-                else if (r > disappearEnd - 0.1) s = 1 - (r - (disappearEnd - 0.1)) / 0.1;
-                else s = 1;
+            if (visible) {
+                const p = (r - start) / (end - start); // 0 to 1 progress during card phase
+
+                // Entrance: Slide from Left (-5) to Center (0)
+                // Exit: Slide to Right (+5)
+                const xPos = THREE.MathUtils.lerp(-4, 4, p);
+                cardRef.current.position.x = xPos;
+
+                // Banking rotation
+                cardRef.current.rotation.y = xPos * 0.2;
+                cardRef.current.rotation.z = -xPos * 0.1;
+
+                // Scale in/out
+                let s = 1;
+                if (p < 0.2) s = p / 0.2;
+                if (p > 0.8) s = 1 - (p - 0.8) / 0.2;
+                cardRef.current.scale.setScalar(s);
             }
-            cardRef.current.scale.setScalar(THREE.MathUtils.lerp(cardRef.current.scale.x, s, 0.1));
-
-            // Floating & Rotate
-            cardRef.current.rotation.y = Math.PI + Math.sin(state.clock.elapsedTime * 0.5) * 0.2 + (r - 0.5) * 2;
-            cardRef.current.rotation.z = Math.cos(state.clock.elapsedTime * 0.3) * 0.1;
         }
 
-        // 3. NEURAL NEXUS (Visible 0.75 - 1.0)
+        // 3. NEXUS / QUANTUM GEOMETRY (Visible 0.6 - 0.9)
         if (nexusRef.current) {
-            const appearStart = 0.75;
+            const start = 0.6;
+            const end = 1.0; // stays till end
+            const visible = r > start;
+            nexusRef.current.visible = visible;
 
-            let s = 0;
-            if (r > appearStart) {
-                s = Math.min(1, (r - appearStart) / 0.1);
+            if (visible) {
+                const p = (r - start) / (0.2);
+                const s = Math.min(1, p);
+                nexusRef.current.scale.setScalar(s);
+
+                // Rotate
+                nexusRef.current.rotation.x = state.clock.elapsedTime * 0.1;
+                nexusRef.current.rotation.y = state.clock.elapsedTime * 0.15;
             }
-            nexusRef.current.scale.setScalar(THREE.MathUtils.lerp(nexusRef.current.scale.x, s, 0.1));
+        }
 
-            // Pulse
-            nexusRef.current.rotation.y += delta * 0.5;
-            nexusRef.current.rotation.z += delta * 0.2;
+        // 4. SPIRAL TUNNEL (Visible 0.8 - 1.0)
+        if (spiralRef.current) {
+            spiralRef.current.visible = r > 0.7;
+            spiralRef.current.rotation.z = -state.clock.elapsedTime * 0.5;
         }
 
     });
@@ -291,24 +288,14 @@ export function Scene() {
     return (
         <>
             <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0, 5]} fov={45} />
-
-            {/* Cinematic Lighting & Environment */}
             <Environment preset="city" />
-            <ambientLight intensity={0.2} />
-            <pointLight position={[-10, -10, -10]} intensity={1} color="blue" />
-            <spotLight position={[10, 10, 10]} angle={0.2} penumbra={1} intensity={2} castShadow color="white" />
+            <ambientLight intensity={0.5} />
+            <pointLight position={[10, 10, 10]} intensity={1} />
 
-            {/* Background Atmosphere */}
             <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
-            {/* Cloud component removed - incompatible props with drei v10 */}
-
-            {/* Floating Particles (Dust) */}
-            <Sparkles count={100} scale={12} size={2} speed={0.4} opacity={0.5} color="#44aaff" />
-
-            {/* --- OBJECTS --- */}
 
             <group ref={watchRef}>
-                <WatchModel />
+                <ClassicWatchModel />
             </group>
 
             <group ref={cardRef}>
@@ -316,9 +303,12 @@ export function Scene() {
             </group>
 
             <group ref={nexusRef}>
-                <NeuralNexusModel />
+                <QuantumGeometryModel />
             </group>
 
+            <group ref={spiralRef} position={[0, 0, -5]}>
+                <SpiralTunnel />
+            </group>
         </>
     );
 }
