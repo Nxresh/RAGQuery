@@ -1,5 +1,5 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { initializeApp, FirebaseApp } from "firebase/app";
+import { getAuth, Auth } from "firebase/auth";
 
 /**
  * Firebase Configuration - SECURITY NOTES:
@@ -23,29 +23,30 @@ const requiredEnvVars = [
 ];
 
 const missingVars = requiredEnvVars.filter(key => !import.meta.env[key]);
+
+// Firebase is optional during landing page - only warn, don't crash
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+
 if (missingVars.length > 0) {
-    console.error('════════════════════════════════════════════════════════════');
-    console.error('❌ Missing required Firebase environment variables:');
-    missingVars.forEach(v => console.error(`   • ${v}`));
-    console.error('');
-    console.error('Please add these to your .env or .env.local file.');
-    console.error('════════════════════════════════════════════════════════════');
-    throw new Error(`Missing Firebase configuration: ${missingVars.join(', ')}`);
+    console.warn('⚠️ Firebase not configured - some features disabled.');
+    console.warn('   Missing:', missingVars.join(', '));
+} else {
+    const firebaseConfig = {
+        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
+        appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
+        measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ''
+    };
+
+    // Initialize Firebase
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
 }
 
-const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
-    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || ''
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialize Firebase Authentication
-export const auth = getAuth(app);
+export { auth };
 export default app;
+
