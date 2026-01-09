@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useScroll, Environment, Sparkles, Float, PerspectiveCamera, Text, Stars, Cloud, Line, PointMaterial, Points } from '@react-three/drei';
 import * as THREE from 'three';
-import * as random from 'maath/random/dist/maath-random.esm'
+import * as random from 'maath/random';
 import { useState } from 'react';
 
 // --- HIGH-FIDELITY PROCEDURAL ASSETS ---
