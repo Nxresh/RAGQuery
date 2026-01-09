@@ -501,16 +501,15 @@ export const securityHeaders = helmet({
                 "https://raw.githack.com",
                 "https://raw.githubusercontent.com",
                 "https://github.com",
-                "https://poly.pizza"
+                "https://poly.pizza",
+                "https://*.firebaseapp.com",
+                "https://*.googleapis.com"
             ],
-            "https://*.firebaseapp.com",
-            "https://*.googleapis.com"
-            ],
-frameAncestors: ["'none'"],
-    objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            objectSrc: ["'none'"],
         },
     },
-crossOriginEmbedderPolicy: false,
+    crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
 });
 
