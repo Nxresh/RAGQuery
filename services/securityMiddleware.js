@@ -498,14 +498,19 @@ export const securityHeaders = helmet({
                 "https://openrouter.ai",
                 "https://generativelanguage.googleapis.com",
                 "https://*.atlassian.net",
-                "https://*.firebaseapp.com",
-                "https://*.googleapis.com"
+                "https://raw.githack.com",
+                "https://raw.githubusercontent.com",
+                "https://github.com",
+                "https://poly.pizza"
             ],
-            frameAncestors: ["'none'"],
-            objectSrc: ["'none'"],
+            "https://*.firebaseapp.com",
+            "https://*.googleapis.com"
+            ],
+frameAncestors: ["'none'"],
+    objectSrc: ["'none'"],
         },
     },
-    crossOriginEmbedderPolicy: false,
+crossOriginEmbedderPolicy: false,
     crossOriginResourcePolicy: { policy: "cross-origin" },
 });
 
