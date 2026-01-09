@@ -59,42 +59,35 @@ export function Overlay({ onEnter }: OverlayProps) {
                 </motion.div>
             </Section>
 
-            {/* Scene 4: Neural Nexus (Scroll 0.75-1.0) */}
-            <Section className="items-center text-center">
-                <motion.h2
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    whileInView={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 1 }}
-                    className="text-5xl md:text-8xl font-black tracking-tighter text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
-                >
-                    ABSOLUTE<br />INTELLIGENCE
-                </motion.h2>
-            </Section>
+            {/* Scene 4: Spiral Zoom (Scroll 0.75-1.0) - Text Removed as requested */}
 
             {/* Spacer for transition */}
-            <div className="h-[50vh]" />
+            <div className="h-[20vh]" />
 
             {/* Final Reveal & Action */}
             <Section className="items-center text-center h-[100vh]">
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    transition={{ duration: 1.5 }}
-                    className="flex flex-col items-center gap-8 pointer-events-auto bg-black/80 p-16 rounded-3xl backdrop-blur-md border border-white/20 shadow-2xl"
+                    initial={{ opacity: 0, scale: 0.5, z: -100 }}
+                    whileInView={{ opacity: 1, scale: 1, z: 0 }}
+                    transition={{ duration: 1.5, type: "spring", bounce: 0.3 }}
+                    className="flex flex-col items-center gap-6 pointer-events-auto bg-black/90 p-20 rounded-[3rem] backdrop-blur-2xl border-2 border-white/10 shadow-[0_0_100px_rgba(255,255,255,0.1)]"
                 >
-                    <h1 className="text-6xl md:text-9xl font-bold tracking-tighter mb-2 text-white">
-                        RAGQUERY
-                    </h1>
-                    <p className="text-xl md:text-2xl text-neutral-300 max-w-2xl text-center leading-relaxed font-light">
-                        The world's most advanced AI. <br />
-                        Your new reality starts here.
+                    <div className="flex flex-col items-center">
+                        <h1 className="text-7xl md:text-9xl font-bold tracking-tighter mb-2 text-white drop-shadow-2xl">
+                            RAGQUERY
+                        </h1>
+                        <div className="w-32 h-1 bg-white rounded-full mb-8 opacity-50" />
+                    </div>
+
+                    <p className="text-xl md:text-3xl text-neutral-300 max-w-3xl text-center leading-relaxed font-extralight tracking-wide">
+                        Enterprise Intelligence.<br />Reimagined.
                     </p>
 
                     <button
                         onClick={onEnter}
-                        className="mt-8 px-12 py-4 bg-white text-black text-lg font-bold tracking-widest hover:bg-neutral-200 transition-all duration-300 rounded-full shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+                        className="mt-12 px-16 py-6 bg-white text-black text-xl font-bold tracking-[0.2em] hover:scale-105 hover:bg-neutral-200 transition-all duration-300 rounded-none border border-white uppercase"
                     >
-                        ENTER EXPERIENCE
+                        Enter System
                     </button>
                 </motion.div>
             </Section>

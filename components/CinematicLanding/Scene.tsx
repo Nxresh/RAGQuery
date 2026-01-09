@@ -1,48 +1,106 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useScroll, Environment, Sparkles, PerspectiveCamera, Text, Stars, Float, Icosahedron, Dodecahedron, Octahedron, Torus } from '@react-three/drei';
+import { useScroll, Environment, Sparkles, PerspectiveCamera, Text, Stars, Float, Icosahedron, Torus, Cylinder } from '@react-three/drei';
 import * as THREE from 'three';
 
 // --- ASSETS ---
 
-function ClassicWatchModel() {
+function GodfatherWatchModel() {
     return (
-        <group rotation={[Math.PI / 2, 0, 0]} scale={0.8}>
-            {/* Strap: Leather texture look */}
-            <mesh position={[0, 0, -0.1]}>
-                <boxGeometry args={[0.6, 2.5, 0.05]} />
-                <meshStandardMaterial color="#1a1a1a" roughness={0.9} />
-            </mesh>
-
-            {/* Case: Polished Silver/Steel */}
+        <group rotation={[Math.PI / 2, 0, 0]} scale={0.9}>
+            {/* Case: Rose Gold Complex */}
             <mesh rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[0.8, 0.8, 0.15, 64]} />
-                <meshStandardMaterial color="#e0e0e0" metalness={1} roughness={0.1} envMapIntensity={2} />
+                <cylinderGeometry args={[0.9, 0.9, 0.15, 64]} />
+                <meshStandardMaterial color="#B76E79" metalness={1} roughness={0.1} envMapIntensity={2.5} />
             </mesh>
 
-            {/* Bezel: Gold Accent */}
+            {/* Bezel: Black Ceramic Insert */}
             <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-                <torusGeometry args={[0.8, 0.05, 32, 64]} />
-                <meshStandardMaterial color="#FFD700" metalness={1} roughness={0.2} />
+                <torusGeometry args={[0.9, 0.04, 32, 64]} />
+                <meshStandardMaterial color="#000" metalness={0.8} roughness={0.2} />
             </mesh>
 
-            {/* Face: Deep Blue Sunburst */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-                <cylinderGeometry args={[0.75, 0.75, 0.01, 64]} />
-                <meshStandardMaterial color="#001133" metalness={0.5} roughness={0.4} />
-            </mesh>
+            {/* Face: Open Skeleton Work */}
+            <group position={[0, -0.05, 0]}>
+                {/* Main Plate */}
+                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                    <cylinderGeometry args={[0.85, 0.85, 0.02, 64]} />
+                    <meshStandardMaterial color="#111" metalness={0.6} roughness={0.6} />
+                </mesh>
+
+                {/* Musical Cylinders (Godfather mechanism hint) */}
+                <group position={[-0.4, 0.1, -0.3]} rotation={[Math.PI / 2, 0, Math.PI / 4]}>
+                    <mesh>
+                        <cylinderGeometry args={[0.12, 0.12, 0.5, 32]} />
+                        <meshStandardMaterial color="#B76E79" metalness={1} roughness={0.3} />
+                    </mesh>
+                    {/* Pins on cylinder */}
+                    {Array.from({ length: 10 }).map((_, i) => (
+                        <mesh key={i} position={[0.13, (i - 5) * 0.04, 0]} rotation={[0, 0, Math.PI / 2]}>
+                            <cylinderGeometry args={[0.01, 0.01, 0.05, 8]} />
+                            <meshStandardMaterial color="#fff" metalness={1} />
+                        </mesh>
+                    ))}
+                </group>
+
+                <group position={[0.4, 0.1, -0.3]} rotation={[Math.PI / 2, 0, -Math.PI / 4]}>
+                    <mesh>
+                        <cylinderGeometry args={[0.12, 0.12, 0.5, 32]} />
+                        <meshStandardMaterial color="#B76E79" metalness={1} roughness={0.3} />
+                    </mesh>
+                </group>
+
+                {/* Center Tourbillon Cage */}
+                <group position={[0, 0.1, 0.4]}>
+                    <mesh rotation={[Math.PI / 2, 0, 0]}>
+                        <torusGeometry args={[0.25, 0.02, 16, 32]} />
+                        <meshStandardMaterial color="#ffd700" metalness={1} />
+                    </mesh>
+                    <mesh>
+                        <octahedronGeometry args={[0.15, 0]} />
+                        <meshStandardMaterial color="#B76E79" wireframe />
+                    </mesh>
+                </group>
+
+                {/* Central Godfather Logo Hint */}
+                <Text
+                    position={[0, 0.12, 0]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                    fontSize={0.1}
+                    color="#fff"
+                    font="https://fonts.gstatic.com/s/alfaoneroom/v1/m8JVjfKr7al8y0mX8m2h.woff"
+                    anchorX="center"
+                    anchorY="middle"
+                >
+                    The Godfather
+                </Text>
+            </group>
 
             {/* Hands */}
-            <group position={[0, 0.1, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <mesh position={[0, 0, 0]} rotation={[0, 0, 0]}>
-                    <boxGeometry args={[0.04, 0.5, 0.01]} />
-                    <meshStandardMaterial color="#FFD700" metalness={1} />
+            <group position={[0, 0.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <mesh rotation={[0, 0, 1]}>
+                    <boxGeometry args={[0.06, 0.7, 0.02]} />
+                    <meshStandardMaterial color="#B76E79" metalness={1} />
                 </mesh>
-                <mesh position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-                    <boxGeometry args={[0.04, 0.35, 0.01]} />
-                    <meshStandardMaterial color="#FFD700" metalness={1} />
+                <mesh rotation={[0, 0, -2]}>
+                    <boxGeometry args={[0.08, 0.5, 0.02]} />
+                    <meshStandardMaterial color="#B76E79" metalness={1} />
                 </mesh>
             </group>
+
+            {/* Glass Dome */}
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.2, 0]}>
+                <cylinderGeometry args={[0.9, 0.9, 0.05, 64]} />
+                <meshPhysicalMaterial
+                    color="#fff"
+                    transparent
+                    opacity={0.1}
+                    roughness={0}
+                    metalness={0.1}
+                    transmission={0.9}
+                    thickness={0.1}
+                />
+            </mesh>
         </group>
     );
 }
@@ -54,7 +112,7 @@ function CardModel() {
             <mesh>
                 <boxGeometry args={[3.37, 2.125, 0.05]} />
                 <meshPhysicalMaterial
-                    color="#000000"
+                    color="#050505"
                     metalness={0.7}
                     roughness={0.4}
                     clearcoat={0.8}
@@ -105,78 +163,38 @@ function CardModel() {
     );
 }
 
-function QuantumGeometryModel() {
+// "Previous Version" Spiral/Sphere - Based on User Image
+// White inner sphere + Wireframe Outer Sphere + Particles
+function WireframeSphereModel() {
     const groupRef = useRef<THREE.Group>(null!);
 
     useFrame((state) => {
         if (groupRef.current) {
-            groupRef.current.rotation.y += 0.005;
-            groupRef.current.rotation.z += 0.002;
+            groupRef.current.rotation.y += 0.002;
+            groupRef.current.rotation.x += 0.001;
         }
     });
 
     return (
         <group ref={groupRef}>
-            {/* Outer Geodesic Cage */}
+            {/* Inner White Sphere - "The World" */}
             <mesh>
-                <icosahedronGeometry args={[1.8, 1]} />
-                <meshStandardMaterial color="#00ffff" wireframe transparent opacity={0.15} />
+                <sphereGeometry args={[1, 64, 64]} />
+                <meshStandardMaterial color="white" roughness={0.2} metalness={0.1} />
             </mesh>
 
-            {/* Mid Rotating Rings */}
-            <group rotation={[Math.PI / 4, 0, 0]}>
-                <mesh>
-                    <torusGeometry args={[1.4, 0.02, 16, 100]} />
-                    <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={2} />
-                </mesh>
-            </group>
-
-            {/* Inner Geometric Core - "Graph" feel */}
-            <mesh>
-                <dodecahedronGeometry args={[1, 0]} />
-                <meshStandardMaterial color="#ffffff" wireframe transparent opacity={0.3} />
+            {/* Outer Wireframe Sphere - "The Network" */}
+            <mesh scale={1.5}>
+                <sphereGeometry args={[1, 24, 24]} />
+                <meshBasicMaterial color="white" wireframe transparent opacity={0.15} />
+            </mesh>
+            <mesh scale={1.8} rotation={[0, 0, Math.PI / 4]}>
+                <sphereGeometry args={[1, 16, 16]} />
+                <meshBasicMaterial color="white" wireframe transparent opacity={0.1} />
             </mesh>
 
-            {/* Central Singularity */}
-            <mesh>
-                <octahedronGeometry args={[0.5, 0]} />
-                <meshStandardMaterial color="white" emissive="white" emissiveIntensity={4} toneMapped={false} />
-            </mesh>
-
-            {/* Connecting Lines / Data Streams */}
-            <Sparkles count={40} scale={3} size={4} speed={0.4} opacity={0.6} color="#00ffff" />
-        </group>
-    );
-}
-
-function SpiralTunnel() {
-    // Generate spiral points
-    const points = useMemo(() => {
-        const p = [];
-        for (let i = 0; i < 200; i++) {
-            const t = i / 10;
-            const r = 2 + i * 0.05; // radius increases
-            const x = Math.cos(t * 3) * r;
-            const y = Math.sin(t * 3) * r;
-            const z = -i * 0.5; // clear depth
-            p.push(new THREE.Vector3(x, y, z));
-        }
-        return p;
-    }, []);
-
-    // Create a tube or points along the path
-    const curve = useMemo(() => new THREE.CatmullRomCurve3(points), [points]);
-
-    return (
-        <group position={[0, 0, -5]}>
-            {/* Tunnel Particles */}
-            <Sparkles count={500} scale={[10, 10, 50]} size={3} speed={2} opacity={0.5} color="#44aaff" />
-
-            {/* Faint Guide Line */}
-            <mesh>
-                <tubeGeometry args={[curve, 64, 0.05, 8, false]} />
-                <meshBasicMaterial color="#00ffff" transparent opacity={0.1} wireframe />
-            </mesh>
+            {/* Orbiting Particles */}
+            <Sparkles count={150} scale={5} size={2} speed={0.4} opacity={0.5} color="white" />
         </group>
     );
 }
@@ -186,7 +204,6 @@ export function Scene() {
     const cameraRef = useRef<THREE.PerspectiveCamera>(null!);
     const watchRef = useRef<THREE.Group>(null!);
     const cardRef = useRef<THREE.Group>(null!);
-    const nexusRef = useRef<THREE.Group>(null!);
     const spiralRef = useRef<THREE.Group>(null!);
 
     useFrame((state, delta) => {
@@ -194,93 +211,83 @@ export function Scene() {
 
         // --- CAMERA SEQUENCE ---
         if (cameraRef.current) {
-            // 0 - 0.25: WATCH
+            // 0 - 0.25: WATCH ENTRY
             if (r < 0.25) {
                 cameraRef.current.position.set(0, 0, 5);
                 cameraRef.current.lookAt(0, 0, 0);
             }
-            // 0.25 - 0.5: CARD (Transition)
+            // 0.25 - 0.5: WATCH ZOOM & CARD ENTRY
             else if (r < 0.5) {
-                const p = (r - 0.25) / 0.25; // 0 to 1
-                cameraRef.current.position.z = THREE.MathUtils.lerp(5, 4, p);
+                const p = (r - 0.25) / 0.25;
+                // Zoom into watch slightly
+                cameraRef.current.position.z = THREE.MathUtils.lerp(5, 3.5, p);
+                // cameraRef.current.rotation.x = THREE.MathUtils.lerp(0, -0.2, p);
             }
-            // 0.5 - 0.8: NEXUS
+            // 0.5 - 0.8: CARD & SPIRAL APPROACH
             else if (r < 0.8) {
-                const p = (r - 0.5) / 0.3; // 0 to 1
-                cameraRef.current.position.z = THREE.MathUtils.lerp(4, 2, p);
+                const p = (r - 0.5) / 0.3;
+                cameraRef.current.position.z = THREE.MathUtils.lerp(3.5, 4, p); // Pull back slightly for Card
             }
-            // 0.8 - 1.0: SPIRAL ZOOM
+            // 0.8 - 1.0: FINAL SPIRAL ZOOM
             else {
-                const p = (r - 0.8) / 0.2; // 0 to 1
-                // Zoom IN rapidly
-                cameraRef.current.position.z = THREE.MathUtils.lerp(2, -10, p);
+                const p = (r - 0.8) / 0.2;
+                // DRAMATIC ZOOM THROUGH THE SPHERE
+                cameraRef.current.position.z = THREE.MathUtils.lerp(4, -2, p);
             }
         }
 
         // --- ANIMATIONS ---
 
-        // 1. WATCH (Visible 0 - 0.3)
+        // 1. WATCH (Visible 0 - 0.4)
         if (watchRef.current) {
-            const visible = r < 0.35;
+            const visible = r < 0.45;
             watchRef.current.visible = visible;
             if (visible) {
                 watchRef.current.rotation.y = r * Math.PI * 2;
-                watchRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.1;
-                const scale = THREE.MathUtils.lerp(1, 0, Math.max(0, (r - 0.25) / 0.1));
-                watchRef.current.scale.setScalar(scale);
+                watchRef.current.rotation.x = Math.PI / 6 + Math.sin(state.clock.elapsedTime) * 0.05;
+
+                // Fade out logic
+                let scale = 1;
+                if (r > 0.35) scale = 1 - (r - 0.35) / 0.1;
+                watchRef.current.scale.setScalar(scale * 0.9); // Base scale 0.9
             }
         }
 
-        // 2. CARD (Visible 0.3 - 0.6)
+        // 2. CARD (Visible 0.3 - 0.7)
         if (cardRef.current) {
-            // "The way it moved from left to right"
-            const start = 0.3;
-            const end = 0.6;
-            const visible = r > start - 0.1 && r < end + 0.1;
+            const start = 0.35;
+            const end = 0.75;
+            const visible = r > start && r < end;
             cardRef.current.visible = visible;
 
             if (visible) {
-                const p = (r - start) / (end - start); // 0 to 1 progress during card phase
-
-                // Entrance: Slide from Left (-5) to Center (0)
-                // Exit: Slide to Right (+5)
-                const xPos = THREE.MathUtils.lerp(-4, 4, p);
+                const p = (r - start) / (end - start);
+                // Left to Right Animation
+                const xPos = THREE.MathUtils.lerp(-5, 5, p);
                 cardRef.current.position.x = xPos;
 
-                // Banking rotation
-                cardRef.current.rotation.y = xPos * 0.2;
-                cardRef.current.rotation.z = -xPos * 0.1;
-
-                // Scale in/out
-                let s = 1;
-                if (p < 0.2) s = p / 0.2;
-                if (p > 0.8) s = 1 - (p - 0.8) / 0.2;
-                cardRef.current.scale.setScalar(s);
+                // Banking
+                cardRef.current.rotation.y = xPos * 0.15;
+                cardRef.current.rotation.z = -xPos * 0.05;
             }
         }
 
-        // 3. NEXUS / QUANTUM GEOMETRY (Visible 0.6 - 0.9)
-        if (nexusRef.current) {
-            const start = 0.6;
-            const end = 1.0; // stays till end
+        // 3. WIREFRAME SPHERE / SPIRAL TURN (Visible 0.7 - 1.0)
+        if (spiralRef.current) {
+            const start = 0.7;
             const visible = r > start;
-            nexusRef.current.visible = visible;
+            spiralRef.current.visible = visible;
 
             if (visible) {
-                const p = (r - start) / (0.2);
-                const s = Math.min(1, p);
-                nexusRef.current.scale.setScalar(s);
+                const p = (r - start) / 0.3;
 
-                // Rotate
-                nexusRef.current.rotation.x = state.clock.elapsedTime * 0.1;
-                nexusRef.current.rotation.y = state.clock.elapsedTime * 0.15;
+                // Scale up as we approach
+                const s = THREE.MathUtils.lerp(0, 1.5, Math.min(1, p * 2));
+                spiralRef.current.scale.setScalar(s);
+
+                // Rotation
+                spiralRef.current.rotation.y += 0.005;
             }
-        }
-
-        // 4. SPIRAL TUNNEL (Visible 0.8 - 1.0)
-        if (spiralRef.current) {
-            spiralRef.current.visible = r > 0.7;
-            spiralRef.current.rotation.z = -state.clock.elapsedTime * 0.5;
         }
 
     });
@@ -290,24 +297,21 @@ export function Scene() {
             <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0, 5]} fov={45} />
             <Environment preset="city" />
             <ambientLight intensity={0.5} />
-            <pointLight position={[10, 10, 10]} intensity={1} />
+            <pointLight position={[10, 10, 10]} intensity={1} color="white" />
+            <pointLight position={[-10, -5, -5]} intensity={0.5} color="#B76E79" /> {/* Rose Gold Fill */}
 
             <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
 
             <group ref={watchRef}>
-                <ClassicWatchModel />
+                <GodfatherWatchModel />
             </group>
 
             <group ref={cardRef}>
                 <CardModel />
             </group>
 
-            <group ref={nexusRef}>
-                <QuantumGeometryModel />
-            </group>
-
-            <group ref={spiralRef} position={[0, 0, -5]}>
-                <SpiralTunnel />
+            <group ref={spiralRef}>
+                <WireframeSphereModel />
             </group>
         </>
     );
