@@ -25,12 +25,17 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   console.log('📊 Sentry frontend monitoring initialized');
 }
 
+import { CinematicLanding } from './components/CinematicLanding';
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'login' | 'signup'>('login');
+  const [showLanding, setShowLanding] = useState(true); // Control Landing Page visibility
   const [verificationSent, setVerificationSent] = useState(false);
   const [resendError, setResendError] = useState('');
+
+  console.log('RENDER APP: User:', user, 'ShowLanding:', showLanding, 'Loading:', loading);
 
   useEffect(() => {
     // Handle initial hash
@@ -99,9 +104,15 @@ function App() {
     );
   }
 
+  // Show Cinematic Landing Page for unauthenticated users
+  if (!user && showLanding) {
+    return <CinematicLanding onComplete={() => setShowLanding(false)} />;
+  }
+
   if (!user) {
     return <AuthPage initialView={view} />;
   }
+
 
   // Check if email is verified
   if (!user.emailVerified) {
