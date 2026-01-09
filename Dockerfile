@@ -15,6 +15,9 @@ RUN npm ci --legacy-peer-deps
 # Copy application code
 COPY . .
 
+# Build the Next.js frontend
+RUN npm run build
+
 # Production stage
 FROM node:18-alpine
 
