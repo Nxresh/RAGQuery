@@ -32,12 +32,16 @@ export function MacroZoom() {
                         className="relative"
                     >
                         {/* Intense glow at this scale */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-amber-500/40 to-amber-300/40 blur-[80px] scale-150" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 to-amber-900/20 blur-[100px] scale-150" />
 
                         <img
                             src="/watch.png"
                             alt="Watch Detail"
-                            className="w-[80vw] max-w-3xl h-auto object-contain"
+                            className="w-[90vw] max-w-4xl h-auto object-contain"
+                            style={{
+                                maskImage: 'radial-gradient(circle at center, black 30%, transparent 70%)',
+                                WebkitMaskImage: 'radial-gradient(circle at center, black 30%, transparent 70%)'
+                            }}
                         />
                     </motion.div>
 
