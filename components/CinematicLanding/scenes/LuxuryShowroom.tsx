@@ -60,15 +60,31 @@ export function LuxuryShowroom() {
                         transition={{ duration: 1.5, delay: 0.5, ease: [0.22, 1, 0.36, 1] }}
                         className="relative w-full max-w-2xl"
                     >
-                        {/* Glow effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-amber-500/20 via-amber-400/30 to-amber-500/20 blur-3xl rounded-full scale-110" />
-                        <div className="absolute inset-0 bg-amber-500/10 blur-2xl rounded-full animate-pulse" />
+                        {/* Cinematic Glow Behind */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-amber-500/10 via-amber-900/20 to-transparent blur-[100px] scale-150" />
 
-                        <img
-                            src="/watch.png"
-                            alt="Luxury Timepiece"
-                            className="relative w-full h-auto object-contain drop-shadow-[0_0_80px_rgba(217,119,6,0.3)]"
-                        />
+                        <div className="relative">
+                            <img
+                                src="/watch.png"
+                                alt="Luxury Timepiece"
+                                className="relative w-full h-auto object-contain z-10"
+                                style={{
+                                    maskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 95%)',
+                                    WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 60%, transparent 95%)'
+                                }}
+                            />
+
+                            {/* Creative Blend Overlay - Bottom Fade */}
+                            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black via-black/80 to-transparent z-20" />
+
+                            {/* Reflection/Shine Effect */}
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: [0, 0.3, 0] }}
+                                transition={{ duration: 4, repeat: Infinity, repeatDelay: 3 }}
+                                className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent z-20 pointer-events-none"
+                            />
+                        </div>
                     </motion.div>
                 </motion.div>
 

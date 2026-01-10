@@ -23,7 +23,7 @@ export function CinematicLanding({ onComplete }: CinematicLandingProps) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black">
+        <div className="relative z-[100] bg-black">
             <SmoothScroll>
                 <div className="relative bg-black min-h-screen">
                     <ScrollProgress />
